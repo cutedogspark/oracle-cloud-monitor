@@ -6,6 +6,16 @@
 
 export SUPPRESS_LABEL_WARNING=True
 
+# 跨平台 Python 偵測
+if command -v python3 >/dev/null 2>&1; then
+    PYTHON=python3
+elif command -v python >/dev/null 2>&1 && python --version 2>&1 | grep -q "Python 3"; then
+    PYTHON=python
+else
+    echo "❌ 找不到 Python 3，請先安裝: ./scripts/install-tools.sh"
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${PROJECT_DIR}/.env"
@@ -50,7 +60,7 @@ get_current_cost() {
         --time-usage-started "$start_date" \
         --time-usage-ended "$end_date" \
         --granularity MONTHLY \
-        --output json 2>/dev/null | python3 -c "
+        --output json 2>/dev/null | $PYTHON -c "
 import sys, json
 d = json.load(sys.stdin)['data']
 total = sum((i.get('computed-amount', 0) or 0) for i in d.get('items', []))
@@ -71,14 +81,14 @@ stop_all_instances() {
         --query 'data[].{id:id,"name":"display-name"}' \
         --output json 2>/dev/null)
 
-    count=$(echo "$instances" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null)
+    count=$(echo "$instances" | $PYTHON -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null)
 
     if [ "$count" = "0" ] || [ -z "$count" ]; then
         log "No running instances to stop"
         return
     fi
 
-    echo "$instances" | python3 -c "
+    echo "$instances" | $PYTHON -c "
 import sys, json
 for inst in json.load(sys.stdin):
     print(inst['id'] + '|' + inst['name'])
@@ -100,7 +110,7 @@ for inst in json.load(sys.stdin):
 current_cost=$(get_current_cost)
 log "Cost check: \$${current_cost} / \$${COST_LIMIT}"
 
-exceeded=$(python3 -c "print('yes' if float('${current_cost}') >= ${COST_LIMIT} else 'no')" 2>/dev/null)
+exceeded=$($PYTHON -c "print('yes' if float('${current_cost}') >= ${COST_LIMIT} else 'no')" 2>/dev/null)
 
 if [ "$exceeded" = "yes" ]; then
     stop_all_instances "$current_cost"

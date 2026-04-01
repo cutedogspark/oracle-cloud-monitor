@@ -6,6 +6,16 @@
 
 export SUPPRESS_LABEL_WARNING=True
 
+# 跨平台 Python 偵測
+if command -v python3 >/dev/null 2>&1; then
+    PYTHON=python3
+elif command -v python >/dev/null 2>&1 && python --version 2>&1 | grep -q "Python 3"; then
+    PYTHON=python
+else
+    echo "❌ 找不到 Python 3，請先安裝: ./scripts/install-tools.sh"
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${PROJECT_DIR}/.env"
@@ -43,7 +53,7 @@ if [ -z "$cost_json" ]; then
 fi
 
 # 解析花費明細
-cost_detail=$(echo "$cost_json" | python3 -c "
+cost_detail=$(echo "$cost_json" | $PYTHON -c "
 import sys, json
 
 data = json.load(sys.stdin)['data']
@@ -72,7 +82,7 @@ instances=$(oci compute instance list \
     --lifecycle-state RUNNING \
     --all \
     --query 'data[].{"name":"display-name",shape:shape}' \
-    --output json 2>/dev/null | python3 -c "
+    --output json 2>/dev/null | $PYTHON -c "
 import sys, json
 try:
     for inst in json.load(sys.stdin):
@@ -99,7 +109,7 @@ ${detail}
 "
 fi
 
-if python3 -c "exit(0 if float('${total}') == 0 else 1)" 2>/dev/null; then
+if $PYTHON -c "exit(0 if float('${total}') == 0 else 1)" 2>/dev/null; then
     status_emoji="white_check_mark"
     priority="low"
     title="OCI Daily Report: \$0 (Free)"

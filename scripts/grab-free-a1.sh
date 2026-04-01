@@ -8,6 +8,16 @@
 set -euo pipefail
 export SUPPRESS_LABEL_WARNING=True
 
+# 跨平台 Python 偵測（某些環境只有 python 沒有 python3）
+if command -v python3 >/dev/null 2>&1; then
+    PYTHON=python3
+elif command -v python >/dev/null 2>&1 && python --version 2>&1 | grep -q "Python 3"; then
+    PYTHON=python
+else
+    echo "❌ 找不到 Python 3，請先安裝: ./scripts/install-tools.sh"
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${PROJECT_DIR}/.env"
@@ -27,6 +37,57 @@ for var in COMPARTMENT_ID AVAILABILITY_DOMAIN SUBNET_ID IMAGE_ID SSH_KEY_FILE DI
     fi
 done
 
+# === 檢查帳戶類型 (Pay As You Go) ===
+echo "▸ 檢查帳戶類型..."
+PAYMENT_MODEL=$(oci organizations subscription list \
+    --compartment-id "$TENANCY_ID" \
+    --output json 2>/dev/null | $PYTHON -c "
+import sys, json
+try:
+    items = json.load(sys.stdin)['data']['items']
+    active = [i for i in items if i.get('lifecycle-state') == 'ACTIVE']
+    if active:
+        print(active[0].get('payment-model', 'UNKNOWN'))
+    else:
+        print('UNKNOWN')
+except:
+    print('UNKNOWN')
+" 2>/dev/null)
+
+if [ "$PAYMENT_MODEL" != "PAYG" ]; then
+    echo ""
+    echo "══════════════════════════════════════════════════"
+    echo "  ⚠️  帳戶類型: ${PAYMENT_MODEL:-UNKNOWN} (非 Pay As You Go)"
+    echo "══════════════════════════════════════════════════"
+    echo ""
+    echo "  你的帳戶目前不是 Pay As You Go (PAYG)。"
+    echo ""
+    echo "  ┌─ Free Trial（免費試用）──────────────────────┐"
+    echo "  │ • 30 天試用期，含 \$300 USD 免費額度           │"
+    echo "  │ • 試用期結束後，非 Always Free 資源會被刪除   │"
+    echo "  │ • ARM A1 實例可能在試用結束後被回收           │"
+    echo "  └──────────────────────────────────────────────┘"
+    echo ""
+    echo "  ┌─ Pay As You Go（隨用隨付）──────────────────┐"
+    echo "  │ • Always Free 資源永久免費                   │"
+    echo "  │ • ARM A1 (4 OCPU / 24GB) 不會被回收          │"
+    echo "  │ • 超出免費額度才會收費                        │"
+    echo "  │ • 需綁定信用卡，但不會主動扣款                │"
+    echo "  └──────────────────────────────────────────────┘"
+    echo ""
+    echo "  建議：升級為 PAYG 以確保搶到的實例不會被回收。"
+    echo "  升級方式：OCI Console → Billing → Upgrade to Paid"
+    echo ""
+    read -rp "  是否仍要繼續搶資源？(y/N) " answer
+    if [[ ! "${answer,,}" =~ ^y ]]; then
+        echo "  已取消。"
+        exit 0
+    fi
+    echo ""
+else
+    echo "  ✅ 帳戶類型: Pay As You Go (PAYG)"
+fi
+
 SHAPE="VM.Standard.A1.Flex"
 RETRY_INTERVAL=30
 LOG_FILE="${PROJECT_DIR}/logs/grab-free-a1.log"
@@ -42,7 +103,7 @@ log() {
 }
 
 parse_error() {
-    python3 -c "
+    $PYTHON -c "
 import sys, json, re
 raw = sys.stdin.read()
 m = re.search(r'\{.*\}', raw, re.DOTALL)

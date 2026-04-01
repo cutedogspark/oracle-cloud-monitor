@@ -12,6 +12,16 @@
 
 export SUPPRESS_LABEL_WARNING=True
 
+# 跨平台 Python 偵測
+if command -v python3 >/dev/null 2>&1; then
+    PYTHON=python3
+elif command -v python >/dev/null 2>&1 && python --version 2>&1 | grep -q "Python 3"; then
+    PYTHON=python
+else
+    echo "❌ 找不到 Python 3，請先安裝: ./scripts/install-tools.sh"
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${PROJECT_DIR}/.env"
@@ -60,7 +70,7 @@ report_instances() {
         --compartment-id "${COMPARTMENT_ID:-$TENANCY_ID}" \
         --lifecycle-state RUNNING \
         --all \
-        --output json 2>/dev/null | python3 -c "
+        --output json 2>/dev/null | $PYTHON -c "
 import sys, json
 instances = json.load(sys.stdin).get('data', [])
 a1_ocpus = 0
@@ -91,7 +101,7 @@ report_cost() {
         --time-usage-started "$START" \
         --time-usage-ended "$END" \
         --granularity MONTHLY \
-        --output json 2>/dev/null | python3 -c "
+        --output json 2>/dev/null | $PYTHON -c "
 import sys, json
 
 data = json.load(sys.stdin)['data']
@@ -145,7 +155,7 @@ report_volumes() {
         --compartment-id "${COMPARTMENT_ID:-$TENANCY_ID}" \
         --availability-domain "$AVAILABILITY_DOMAIN" \
         --all \
-        --output json 2>/dev/null | python3 -c "
+        --output json 2>/dev/null | $PYTHON -c "
 import sys, json
 vols = json.load(sys.stdin).get('data', [])
 total = sum(v.get('size-in-gbs', 0) for v in vols)
@@ -156,7 +166,7 @@ print(f'  Boot Volumes: {total}/200 GB')
         --compartment-id "${COMPARTMENT_ID:-$TENANCY_ID}" \
         --availability-domain "$AVAILABILITY_DOMAIN" \
         --all \
-        --output json 2>/dev/null | python3 -c "
+        --output json 2>/dev/null | $PYTHON -c "
 import sys, json
 try:
     vols = json.load(sys.stdin).get('data', [])
@@ -245,6 +255,55 @@ report_limits() {
     echo "  ℹ️  Boot Volume 包含所有實例的開機磁碟，加總不能超過 200 GB"
 }
 
+# === 帳戶類型 ===
+report_account() {
+    separator "Account Type"
+
+    local payment_model start_date end_date
+    local sub_json
+    sub_json=$(oci organizations subscription list \
+        --compartment-id "$TENANCY_ID" \
+        --output json 2>/dev/null)
+
+    if [ -z "$sub_json" ]; then
+        echo "  (無法查詢帳戶類型)"
+        return
+    fi
+
+    eval "$($PYTHON -c "
+import sys, json
+try:
+    items = json.load(sys.stdin)['data']['items']
+    active = [i for i in items if i.get('lifecycle-state') == 'ACTIVE']
+    if active:
+        s = active[0]
+        print(f\"payment_model='{s.get('payment-model', 'UNKNOWN')}'\")
+        print(f\"start_date='{s.get('start-date', 'N/A')[:10]}'\")
+        print(f\"end_date='{s.get('end-date', 'N/A')[:10]}'\")
+    else:
+        print(\"payment_model='UNKNOWN'\")
+except:
+    print(\"payment_model='UNKNOWN'\")
+" <<< "$sub_json" 2>/dev/null)"
+
+    echo ""
+    if [ "$payment_model" = "PAYG" ]; then
+        echo "  ✅ Plan: Pay As You Go (PAYG)"
+        echo "     Always Free 資源永久免費，超出免費額度才收費"
+    elif [ "$payment_model" = "PROMO" ] || [ "$payment_model" = "FREE" ]; then
+        echo "  ⚠️  Plan: $payment_model (免費試用)"
+        echo "     開始: ${start_date:-N/A}"
+        echo "     到期: ${end_date:-N/A}"
+        echo ""
+        echo "     ⚠️  試用期結束後，非 Always Free 資源（含搶到的 ARM A1）可能被回收！"
+        echo "     建議升級為 PAYG: OCI Console → Billing → Upgrade to Paid"
+    else
+        echo "  ℹ️  Plan: $payment_model"
+        echo "     開始: ${start_date:-N/A}"
+        echo "     到期: ${end_date:-N/A}"
+    fi
+}
+
 # === Main ===
 echo ""
 echo "  OCI Resource Report — $(date '+%Y-%m-%d %H:%M:%S')"
@@ -256,7 +315,9 @@ case "$SECTION" in
     network)    report_network ;;
     images)     report_images ;;
     limits)     report_limits ;;
+    account)    report_account ;;
     all)
+        report_account
         report_instances
         report_cost
         report_volumes
@@ -264,7 +325,7 @@ case "$SECTION" in
         report_limits
         ;;
     *)
-        echo "Usage: $0 [instances|cost|volumes|network|images|limits|all]"
+        echo "Usage: $0 [instances|cost|volumes|network|images|limits|account|all]"
         exit 1
         ;;
 esac

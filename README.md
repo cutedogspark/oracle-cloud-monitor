@@ -19,6 +19,38 @@ Oracle Cloud Infrastructure (OCI) Always Free 資源自動化工具，包含：
 
 > **注意**：ARM A1 資源非常搶手，特別是大阪、東京等亞太區域。建立時常出現 `Out of host capacity`，需要持續重試。
 
+## 帳戶類型（重要）
+
+搶資源前，請確認你的 OCI 帳戶已升級為 **Pay As You Go (PAYG)**：
+
+```bash
+# macOS / Linux
+./scripts/oci-report.sh account
+
+# Windows PowerShell
+powershell -File scripts\oci-report.ps1 account
+```
+
+|  | Free Trial（免費試用） | Pay As You Go（隨用隨付） |
+|---|---|---|
+| 免費額度 | $300 USD / 30 天 | Always Free 資源永久免費 |
+| ARM A1 搶到後 | 試用到期後**可能被回收** | **永久保留** |
+| 超出免費額度 | 不收費（到期停用） | 超出部分按量收費 |
+| 需要信用卡 | 不需要 | 需要（不主動扣款） |
+
+> **強烈建議**：升級為 PAYG 再搶資源，否則搶到的 ARM A1 在試用期結束後會被回收。
+> 升級方式：OCI Console → Billing → **Upgrade to Paid**
+>
+> 升級後只要不超出 Always Free 額度，**不會產生任何費用**。腳本內建帳戶類型檢查，非 PAYG 時會提示。
+
+## 支援平台
+
+| 平台 | 架構 | 腳本格式 |
+|---|---|---|
+| macOS | ARM (M1/M2/M3) / Intel | `.sh` (Bash) |
+| Linux | AMD64 / ARM64 | `.sh` (Bash) |
+| Windows 11 | AMD64 | `.ps1` (PowerShell) |
+
 ## 前置需求
 
 - [OCI CLI](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm) 已安裝並設定好 API Key
@@ -26,10 +58,30 @@ Oracle Cloud Infrastructure (OCI) Always Free 資源自動化工具，包含：
 - curl
 - 一個 [ntfy.sh](https://ntfy.sh) topic（免費推播通知）
 
-### 安裝 OCI CLI
+### 一鍵安裝所有工具
+
+**macOS / Linux：**
 
 ```bash
+./scripts/install-tools.sh
+```
+
+**Windows PowerShell：**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-tools.ps1
+```
+
+腳本會自動偵測平台並安裝 OCI CLI、Python 3，同時檢查設定是否正確。
+
+### 手動安裝 OCI CLI
+
+```bash
+# macOS / Linux
 bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)"
+
+# Windows（PowerShell 或 pip）
+pip install oci-cli
 ```
 
 ### 設定 API Key
@@ -45,13 +97,21 @@ oci setup config
 ### 1. 複製設定檔
 
 ```bash
+# macOS / Linux
 cp env.example .env
+
+# Windows PowerShell
+copy env.example .env
 ```
 
 編輯 `.env`，填入你的 OCI 資訊：
 
 ```bash
+# macOS / Linux
 vim .env
+
+# Windows
+notepad .env
 ```
 
 **必填欄位：**
@@ -72,32 +132,47 @@ vim .env
 確認設定正確，先跑報表看看：
 
 ```bash
+# macOS / Linux
 ./scripts/oci-report.sh
+
+# Windows PowerShell
+powershell -File scripts\oci-report.ps1
 ```
 
 可單獨查看特定項目：
 
 ```bash
+# macOS / Linux
 ./scripts/oci-report.sh instances   # 實例
 ./scripts/oci-report.sh cost        # 花費
 ./scripts/oci-report.sh volumes     # 儲存
 ./scripts/oci-report.sh network     # 網路
 ./scripts/oci-report.sh images      # 可用映像檔（建立實例時需要 IMAGE_ID）
 ./scripts/oci-report.sh limits      # 免費額度上限
+
+# Windows PowerShell
+powershell -File scripts\oci-report.ps1 instances
 ```
 
 ### 3. 搶 ARM A1 免費實例
 
 ```bash
+# macOS / Linux
 ./scripts/grab-free-a1.sh
+
+# Windows PowerShell
+powershell -ExecutionPolicy Bypass -File scripts\grab-free-a1.ps1
 ```
 
 腳本會每 30 秒重試一次，直到建立成功。搶到後會透過 ntfy.sh 推播通知。
 
-> **提示**：建議用 `nohup` 或 `tmux` 在背景執行，可能需要數小時甚至數天：
+> **提示**：macOS / Linux 建議用 `nohup` 或 `tmux` 在背景執行，可能需要數小時甚至數天：
+>
 > ```bash
 > nohup ./scripts/grab-free-a1.sh &
 > ```
+>
+> Windows 建議開一個獨立的 PowerShell 視窗執行，或使用 Task Scheduler。
 
 ### 4. 設定花費監控
 
@@ -133,11 +208,13 @@ crontab -e
 ### 5. 手動測試
 
 ```bash
-# 測試花費通知（會發送 ntfy 推播）
-./scripts/check-cost.sh
+# macOS / Linux
+./scripts/check-cost.sh     # 花費通知（會發送 ntfy 推播）
+./scripts/cost-guard.sh     # 花費守衛
 
-# 測試花費守衛
-./scripts/cost-guard.sh
+# Windows PowerShell
+powershell -File scripts\check-cost.ps1
+powershell -File scripts\cost-guard.ps1
 ```
 
 ## 通知設定
@@ -181,11 +258,17 @@ oracle_cloud_monitor/
 ├── .env                 # 你的設定（不會進 git）
 ├── .gitignore
 ├── scripts/
-│   ├── grab-free-a1.sh  # 搶 ARM A1 免費資源
-│   ├── check-cost.sh    # 花費通知
-│   ├── cost-guard.sh    # 花費守衛（自動停機）
-│   ├── oci-report.sh    # 資源報表
-│   └── setup-cron.sh    # 一鍵部署監控到遠端
+│   ├── install-tools.sh  # 工具安裝（Mac/Linux）
+│   ├── install-tools.ps1 # 工具安裝（Windows PowerShell）
+│   ├── grab-free-a1.sh   # 搶 ARM A1（Mac/Linux）
+│   ├── grab-free-a1.ps1  # 搶 ARM A1（Windows）
+│   ├── check-cost.sh     # 花費通知（Mac/Linux）
+│   ├── check-cost.ps1    # 花費通知（Windows）
+│   ├── cost-guard.sh     # 花費守衛（Mac/Linux）
+│   ├── cost-guard.ps1    # 花費守衛（Windows）
+│   ├── oci-report.sh     # 資源報表（Mac/Linux）
+│   ├── oci-report.ps1    # 資源報表（Windows）
+│   └── setup-cron.sh     # 一鍵部署監控到遠端
 └── logs/                # 日誌（不會進 git）
 ```
 
