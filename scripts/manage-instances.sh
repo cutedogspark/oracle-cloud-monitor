@@ -38,42 +38,20 @@ if [ -z "$INSTANCES" ] || [ "$INSTANCES" = "[]" ] || [ "$INSTANCES" = "null" ]; 
     exit 0
 fi
 
-# 查詢每個實例的公網 IP
+# 查詢每個實例的公網 IP 並格式化顯示
 echo "▸ 查詢公網 IP..."
-IP_MAP=$($PYTHON -c "
-import sys, json, subprocess
-
-instances = json.load(sys.stdin)
-for inst in instances:
-    ocid = inst['id']
-    try:
-        r = subprocess.run(
-            ['oci', 'compute', 'instance', 'list-vnics',
-             '--instance-id', ocid, '--output', 'json'],
-            capture_output=True, text=True, env={**__import__('os').environ, 'SUPPRESS_LABEL_WARNING': 'True'})
-        vnics = json.loads(r.stdout).get('data', [])
-        ip = vnics[0].get('public-ip', '') if vnics else ''
-    except:
-        ip = ''
-    print(f'{ocid}|{ip or \"N/A\"}')
-" <<< "$INSTANCES" 2>/dev/null)
-
-# 格式化顯示
 DISPLAY=$($PYTHON -c "
-import sys, json
+import sys, json, subprocess, os
 
 instances = json.load(sys.stdin)
 if not instances:
     print('NO_INSTANCES')
     sys.exit(0)
 
-ip_map = {}
-for line in '''${IP_MAP}'''.strip().split('\n'):
-    if '|' in line:
-        k, v = line.split('|', 1)
-        ip_map[k] = v
+env = {**os.environ, 'SUPPRESS_LABEL_WARNING': 'True'}
 
 for i, inst in enumerate(instances, 1):
+    ocid = inst['id']
     state = inst['lifecycle-state']
     marker = {'RUNNING': '🟢', 'STOPPED': '🔴', 'STOPPING': '🟡', 'STARTING': '🟡', 'PROVISIONING': '🟡'}.get(state, '⚪')
     name = inst.get('display-name', 'N/A')
@@ -81,8 +59,18 @@ for i, inst in enumerate(instances, 1):
     ocpus = inst.get('shape-config', {}).get('ocpus', '?')
     mem = inst.get('shape-config', {}).get('memory-in-gbs', '?')
     created = inst.get('time-created', '')[:10]
-    ocid = inst['id']
-    ip = ip_map.get(ocid, 'N/A')
+
+    ip = 'N/A'
+    try:
+        r = subprocess.run(
+            ['oci', 'compute', 'instance', 'list-vnics',
+             '--instance-id', ocid, '--output', 'json'],
+            capture_output=True, text=True, env=env)
+        vnics = json.loads(r.stdout).get('data', [])
+        if vnics and vnics[0].get('public-ip'):
+            ip = vnics[0]['public-ip']
+    except Exception:
+        pass
 
     print(f'  {i}) {marker} {name}')
     print(f'     狀態: {state}  |  IP: {ip}')

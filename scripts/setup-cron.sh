@@ -64,8 +64,9 @@ ssh "$REMOTE" "chmod 600 ~/.oci/oci_api_key.pem ~/.oci/config && chmod +x ~/oci-
 OCI_PATH=$(ssh "$REMOTE" "which oci 2>/dev/null || echo ~/bin/oci")
 echo "  OCI CLI: $OCI_PATH"
 
-# 在腳本開頭加入 PATH
+# 在腳本開頭加入 PATH（排除 ssh-login-notify.sh，它有自己的 PAM PATH 處理）
 ssh "$REMOTE" "for f in ~/oci-monitor/scripts/*.sh; do
+    case \"\$f\" in *ssh-login-notify*) continue ;; esac
     if ! grep -q 'HOME/bin' \"\$f\" 2>/dev/null; then
         sed -i '2a export PATH=\$HOME/bin:\$PATH' \"\$f\"
     fi
