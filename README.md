@@ -164,7 +164,9 @@ powershell -File scripts\oci-report.ps1 instances
 powershell -ExecutionPolicy Bypass -File scripts\grab-free-a1.ps1
 ```
 
-腳本會每 30 秒重試一次，直到建立成功。搶到後會透過 ntfy.sh 推播通知。
+腳本會每 30 秒重試一次，直到建立成功。搶到後會自動綁定 **Reserved Public IP**（固定 IP），並透過 ntfy.sh 推播通知。
+
+> Reserved IP 邏輯：腳本啟動時會自動查詢帳戶中是否已有 Reserved IP，有就重複使用（IP 不變），沒有則自動建立。Free Tier 包含 1 個免費 Reserved IP。
 
 > **提示**：macOS / Linux 建議用 `nohup` 或 `tmux` 在背景執行，可能需要數小時甚至數天：
 >
@@ -174,14 +176,37 @@ powershell -ExecutionPolicy Bypass -File scripts\grab-free-a1.ps1
 >
 > Windows 建議開一個獨立的 PowerShell 視窗執行，或使用 Task Scheduler。
 
-### 4. 設定花費監控
+### 4. 查詢可用映像檔
+
+搶資源前可查詢該 Region 所有 ARM image，選擇你要的 OS：
+
+```bash
+./scripts/list-arm-images.sh              # 列出所有 OS
+./scripts/list-arm-images.sh ubuntu        # 只看 Ubuntu
+./scripts/list-arm-images.sh oracle        # 只看 Oracle Linux
+```
+
+找到目標 image 後，把 OCID 填入 `.env` 的 `IMAGE_ID`。
+
+### 5. 管理現有實例
+
+互動式查看 / 終止實例：
+
+```bash
+./scripts/manage-instances.sh
+```
+
+會列出所有實例（含狀態、公網 IP、規格），可選擇要終止的編號。
+
+### 6. 設定花費監控
 
 #### 方法一：一鍵安裝到遠端主機（推薦）
 
 搶到實例後，用 setup-cron 把監控部署到遠端：
 
 ```bash
-./scripts/setup-cron.sh opc@<your-instance-ip>
+# Ubuntu image 預設使用者為 ubuntu，Oracle Linux 為 opc
+./scripts/setup-cron.sh ubuntu@<your-instance-ip>
 ```
 
 這會自動：
@@ -205,7 +230,7 @@ crontab -e
 0 * * * * /path/to/scripts/cost-guard.sh >> /path/to/logs/cost-guard.log 2>&1
 ```
 
-### 5. 手動測試
+### 7. 手動測試
 
 ```bash
 # macOS / Linux
@@ -297,7 +322,9 @@ oracle_cloud_monitor/
 │   ├── notify.sh             # 共用通知函式（Bash）
 │   ├── notify.ps1            # 共用通知函式（PowerShell）
 │   ├── ssh-login-notify.sh   # SSH 登入通知（PAM）
-│   └── setup-cron.sh         # 一鍵部署監控到遠端
+│   ├── setup-cron.sh         # 一鍵部署監控到遠端
+│   ├── list-arm-images.sh    # 查詢可用 ARM 映像檔
+│   └── manage-instances.sh   # 互動式實例管理（查看/終止）
 └── logs/                # 日誌（不會進 git）
 ```
 

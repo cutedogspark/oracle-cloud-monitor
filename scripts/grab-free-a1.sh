@@ -94,6 +94,60 @@ RETRY_INTERVAL=30
 LOG_FILE="${PROJECT_DIR}/logs/grab-free-a1.log"
 mkdir -p "$(dirname "$LOG_FILE")"
 
+# === 準備 Reserved Public IP ===
+echo "▸ 檢查 Reserved Public IP..."
+RESERVED_IP_JSON=$(oci network public-ip list \
+    --compartment-id "$COMPARTMENT_ID" \
+    --scope REGION --lifetime RESERVED \
+    --output json 2>&1) || RESERVED_IP_JSON=""
+
+RESERVED_IP_ID=""
+if [ -n "$RESERVED_IP_JSON" ]; then
+    RESERVED_IP_ID=$(echo "$RESERVED_IP_JSON" | $PYTHON -c "
+import sys, json
+try:
+    ips = json.load(sys.stdin).get('data', [])
+    avail = [ip for ip in ips if ip['lifecycle-state'] in ('AVAILABLE', 'ASSIGNED')]
+    print(avail[0]['id'] if avail else '')
+except:
+    print('')
+" 2>/dev/null)
+fi
+
+if [ -n "$RESERVED_IP_ID" ]; then
+    RESERVED_IP_GET=$(oci network public-ip get \
+        --public-ip-id "$RESERVED_IP_ID" --output json 2>&1) || true
+    RESERVED_IP_ADDR=$(echo "$RESERVED_IP_GET" | $PYTHON -c "
+import sys,json
+try: print(json.load(sys.stdin)['data']['ip-address'])
+except: print('')
+" 2>/dev/null)
+    echo "  ✅ 找到現有 Reserved IP: $RESERVED_IP_ADDR"
+else
+    echo "  沒有現有的 Reserved IP，正在建立..."
+    RESERVED_RESULT=$(oci network public-ip create \
+        --compartment-id "$COMPARTMENT_ID" \
+        --lifetime RESERVED \
+        --display-name "${DISPLAY_NAME}-ip" \
+        --output json 2>&1) || true
+    RESERVED_IP_ID=$(echo "$RESERVED_RESULT" | $PYTHON -c "
+import sys,json
+try: print(json.load(sys.stdin)['data']['id'])
+except: print('')
+" 2>/dev/null)
+    RESERVED_IP_ADDR=$(echo "$RESERVED_RESULT" | $PYTHON -c "
+import sys,json
+try: print(json.load(sys.stdin)['data']['ip-address'])
+except: print('')
+" 2>/dev/null)
+    if [ -z "$RESERVED_IP_ID" ]; then
+        echo "  ❌ 建立 Reserved IP 失敗"
+        echo "  $RESERVED_RESULT"
+        exit 1
+    fi
+    echo "  ✅ 已建立 Reserved IP: $RESERVED_IP_ADDR"
+fi
+
 # shape-config 用 file:// 傳遞，避免 JSON 引號問題
 SHAPE_CONFIG_FILE=$(mktemp)
 echo "{\"ocpus\": $OCPUS, \"memoryInGBs\": $MEMORY}" > "$SHAPE_CONFIG_FILE"
@@ -137,18 +191,59 @@ while true; do
         --subnet-id "$SUBNET_ID" \
         --display-name "$DISPLAY_NAME" \
         --boot-volume-size-in-gbs "$BOOT_SIZE" \
-        --assign-public-ip true \
+        --assign-public-ip false \
         --ssh-authorized-keys-file "$SSH_KEY_FILE" \
         --output json 2>&1)
 
     # 成功：回應中含有 lifecycle-state
     if echo "$result" | grep -q '"lifecycle-state"'; then
         log "✅ $DISPLAY_NAME 建立成功！"
-        log "$result"
+
+        INSTANCE_ID=$(echo "$result" | $PYTHON -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',d)['id'])")
+        log "實例 OCID: $INSTANCE_ID"
+
+        # === 綁定 Reserved Public IP ===
+        log "▸ 等待實例進入 RUNNING 狀態..."
+        for w in $(seq 1 30); do
+            STATE=$(oci compute instance get --instance-id "$INSTANCE_ID" \
+                --query 'data."lifecycle-state"' --raw-output 2>/dev/null || echo "")
+            [ "$STATE" = "RUNNING" ] && break
+            log "  狀態: ${STATE:-UNKNOWN}，等待 10 秒... ($w/30)"
+            sleep 10
+        done
+
+        log "▸ 取得 VNIC 資訊..."
+        VNIC_ID=""
+        for w in $(seq 1 10); do
+            VNIC_ID=$(oci compute instance list-vnics \
+                --instance-id "$INSTANCE_ID" --output json 2>/dev/null \
+                | $PYTHON -c "import sys,json; d=json.load(sys.stdin).get('data',[]); print(d[0]['id'] if d else '')" 2>/dev/null)
+            [ -n "$VNIC_ID" ] && break
+            log "  VNIC 尚未就緒，等待 5 秒... ($w/10)"
+            sleep 5
+        done
+
+        if [ -z "$VNIC_ID" ]; then
+            log "❌ 無法取得 VNIC，請手動綁定 Reserved IP"
+            break
+        fi
+
+        PRIVATE_IP_ID=$(oci network private-ip list \
+            --vnic-id "$VNIC_ID" --output json 2>/dev/null \
+            | $PYTHON -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])")
+
+        log "▸ 綁定 Reserved IP: $RESERVED_IP_ADDR"
+        oci network public-ip update \
+            --public-ip-id "$RESERVED_IP_ID" \
+            --private-ip-id "$PRIVATE_IP_ID" \
+            --output json >/dev/null 2>&1
+
+        PUBLIC_IP="$RESERVED_IP_ADDR"
+        log "固定公網 IP: $PUBLIC_IP"
 
         send_notify \
             "OCI A1 搶到了！" \
-            "$DISPLAY_NAME ($OCPUS OCPU / ${MEMORY}GB) 建立成功！第 ${attempt} 次嘗試" \
+            "$DISPLAY_NAME ($OCPUS OCPU / ${MEMORY}GB) 建立成功！IP: ${PUBLIC_IP} 第 ${attempt} 次嘗試" \
             "urgent"
         log "📨 已發送通知"
         break

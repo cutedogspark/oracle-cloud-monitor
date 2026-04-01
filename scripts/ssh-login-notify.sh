@@ -11,8 +11,12 @@ if [ "$PAM_TYPE" != "open_session" ]; then
     exit 0
 fi
 
+# PAM 環境下 PATH 和 HOME 可能未正確設定
+export PATH="/usr/local/bin:/usr/bin:/bin:/snap/bin:$PATH"
+PAM_USER_HOME=$(getent passwd "${PAM_USER}" | cut -d: -f6)
+
 # 載入 .env 設定
-ENV_FILE="$HOME/oci-monitor/.env"
+ENV_FILE="${PAM_USER_HOME}/oci-monitor/.env"
 if [ -f "$ENV_FILE" ]; then
     # shellcheck source=/dev/null
     source "$ENV_FILE"
@@ -36,7 +40,7 @@ Time: ${TIMESTAMP}"
 # 1. ONS email（預設）
 if [ -n "${ONS_TOPIC_ID:-}" ]; then
     OCI_CMD="oci"
-    command -v oci >/dev/null 2>&1 || OCI_CMD="$HOME/bin/oci"
+    command -v oci >/dev/null 2>&1 || OCI_CMD="${PAM_USER_HOME}/bin/oci"
     SUPPRESS_LABEL_WARNING=True $OCI_CMD ons message publish \
         --topic-id "$ONS_TOPIC_ID" \
         --title "$TITLE" \
@@ -53,4 +57,6 @@ if [ -n "${NTFY_TOPIC:-}" ]; then
         "https://ntfy.sh/${NTFY_TOPIC}" >/dev/null 2>&1 &
 fi
 
+# 等待背景程序完成，避免 PAM 提前終止子程序
+wait
 exit 0
