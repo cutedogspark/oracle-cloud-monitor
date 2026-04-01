@@ -54,7 +54,7 @@ scp -q ~/.oci/oci_api_key_public.pem "$REMOTE":~/.oci/oci_api_key_public.pem
 
 echo "▸ 複製腳本..."
 scp -q "$ENV_FILE" "$REMOTE":~/oci-monitor/.env
-scp -q "$SCRIPT_DIR/check-cost.sh" "$SCRIPT_DIR/cost-guard.sh" "$SCRIPT_DIR/oci-report.sh" "$SCRIPT_DIR/ssh-login-notify.sh" "$REMOTE":~/oci-monitor/scripts/
+scp -q "$SCRIPT_DIR/notify.sh" "$SCRIPT_DIR/check-cost.sh" "$SCRIPT_DIR/cost-guard.sh" "$SCRIPT_DIR/oci-report.sh" "$SCRIPT_DIR/ssh-login-notify.sh" "$REMOTE":~/oci-monitor/scripts/
 
 # 5. 設定權限
 echo "▸ 設定權限..."

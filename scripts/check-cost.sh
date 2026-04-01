@@ -25,6 +25,7 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 source "$ENV_FILE"
+source "${SCRIPT_DIR}/notify.sh"
 
 LOG_FILE="${PROJECT_DIR}/logs/check-cost.log"
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -46,9 +47,7 @@ cost_json=$(oci usage-api usage-summary request-summarized-usages \
 
 if [ -z "$cost_json" ]; then
     log "ERROR: Failed to query OCI usage API"
-    curl -sf -H "Title: OCI Cost Check Failed" -H "Priority: high" -H "Tags: x" \
-        -d "Failed to query OCI usage API at $(date)" \
-        "https://ntfy.sh/${NTFY_TOPIC}" >/dev/null 2>&1
+    send_notify "OCI Cost Check Failed" "Failed to query OCI usage API at $(date)" "high"
     exit 1
 fi
 
@@ -110,34 +109,16 @@ ${detail}
 fi
 
 if $PYTHON -c "exit(0 if float('${total}') == 0 else 1)" 2>/dev/null; then
-    status_emoji="white_check_mark"
     priority="low"
     title="OCI Daily Report: \$0 (Free)"
 else
-    status_emoji="warning,dollar"
     priority="high"
     title="OCI Daily Report: \$${total} USD"
 fi
 
 log "$message"
 
-# === 發送 ntfy.sh 通知 ===
-curl -sf \
-    -H "Title: $title" \
-    -H "Priority: $priority" \
-    -H "Tags: $status_emoji" \
-    -d "$message" \
-    "https://ntfy.sh/${NTFY_TOPIC}" >/dev/null 2>&1
-
-log "Sent ntfy.sh notification"
-
-# === 發送 email（透過 OCI ONS，選填） ===
-if [ -n "${ONS_TOPIC_ID:-}" ]; then
-    oci ons message publish \
-        --topic-id "$ONS_TOPIC_ID" \
-        --title "$title" \
-        --body "$message" 2>/dev/null
-    log "Sent email via ONS topic"
-fi
+# === 發送通知 ===
+send_notify "$title" "$message" "$priority"
 
 log "Done"

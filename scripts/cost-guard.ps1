@@ -26,6 +26,9 @@ Get-Content $envFile | ForEach-Object {
     }
 }
 
+# 載入共用通知函式
+. "$scriptDir\notify.ps1"
+
 $costLimit = if ($envVars["COST_LIMIT"]) { [double]$envVars["COST_LIMIT"] } else { 1.0 }
 $logDir = Join-Path $projectDir "logs"
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
@@ -36,17 +39,6 @@ function Write-Log {
     $entry = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $Message"
     Write-Host $entry
     Add-Content -Path $logFile -Value $entry
-}
-
-function Send-Notify {
-    param([string]$Title, [string]$Body, [string]$Priority = "default", [string]$Tags = "dollar")
-    try {
-        $headers = @{ "Title" = $Title; "Priority" = $Priority; "Tags" = $Tags }
-        Invoke-RestMethod -Uri "https://ntfy.sh/$($envVars['NTFY_TOPIC'])" -Method Post -Body ([System.Text.Encoding]::UTF8.GetBytes($Body)) -Headers $headers | Out-Null
-        Write-Log "Notified: $Title"
-    } catch {
-        Write-Log "Notification failed: $_"
-    }
 }
 
 function Get-CurrentCost {
@@ -106,8 +98,7 @@ function Stop-AllInstances {
         Send-Notify `
             -Title "OCI Cost Guard TRIGGERED" `
             -Body "Monthly cost: `$$CurrentCost USD (limit: `$$costLimit). All $count instances have been STOPPED!" `
-            -Priority "urgent" `
-            -Tags "rotating_light,octagonal_sign"
+            -Priority "urgent"
 
         Write-Log "All instances stopped"
     } catch {

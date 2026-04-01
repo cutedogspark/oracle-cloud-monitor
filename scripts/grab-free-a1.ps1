@@ -29,8 +29,11 @@ Get-Content $envFile | ForEach-Object {
     }
 }
 
+# 載入共用通知函式
+. "$scriptDir\notify.ps1"
+
 # 驗證必要變數
-$required = @("COMPARTMENT_ID", "AVAILABILITY_DOMAIN", "SUBNET_ID", "IMAGE_ID", "SSH_KEY_FILE", "DISPLAY_NAME", "OCPUS", "MEMORY", "BOOT_SIZE", "NTFY_TOPIC")
+$required = @("COMPARTMENT_ID", "AVAILABILITY_DOMAIN", "SUBNET_ID", "IMAGE_ID", "SSH_KEY_FILE", "DISPLAY_NAME", "OCPUS", "MEMORY", "BOOT_SIZE")
 foreach ($var in $required) {
     if (-not $envVars.ContainsKey($var) -or [string]::IsNullOrWhiteSpace($envVars[$var])) {
         Write-Host "!! .env 缺少設定: $var" -ForegroundColor Red
@@ -135,19 +138,12 @@ try {
                 Write-Log "OK $($envVars['DISPLAY_NAME']) 建立成功！"
                 Write-Log $resultStr
 
-                # 發送 ntfy 通知
-                try {
-                    $body = "$($envVars['DISPLAY_NAME']) ($($envVars['OCPUS']) OCPU / $($envVars['MEMORY'])GB) 建立成功！第 ${attempt} 次嘗試"
-                    $headers = @{
-                        "Title"    = "OCI A1 搶到了！"
-                        "Priority" = "urgent"
-                        "Tags"     = "tada"
-                    }
-                    Invoke-RestMethod -Uri "https://ntfy.sh/$($envVars['NTFY_TOPIC'])" -Method Post -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -Headers $headers | Out-Null
-                    Write-Log "已發送通知"
-                } catch {
-                    Write-Log "通知發送失敗: $_"
-                }
+                # 發送通知
+                Send-Notify `
+                    -Title "OCI A1 搶到了！" `
+                    -Body "$($envVars['DISPLAY_NAME']) ($($envVars['OCPUS']) OCPU / $($envVars['MEMORY'])GB) 建立成功！第 ${attempt} 次嘗試" `
+                    -Priority "urgent"
+                Write-Log "已發送通知"
                 break
             }
 

@@ -219,20 +219,27 @@ powershell -File scripts\cost-guard.ps1
 
 ## 通知設定
 
-### ntfy.sh（必要）
+所有腳本透過共用的 `notify.sh` / `notify.ps1` 發送通知。**ONS email 為預設**，ntfy.sh 為選填，兩者可同時啟用。
 
-1. 手機安裝 [ntfy app](https://ntfy.sh)（iOS / Android）
-2. 訂閱你在 `.env` 設定的 topic
-3. 完成！不需要註冊帳號
-
-### Email 通知（選填）
-
-透過 OCI Notifications Service (ONS)：
+### Email 通知（預設，透過 OCI ONS）
 
 1. OCI Console → Application Integration → Notifications
 2. Create Topic → 記下 Topic OCID
 3. 在 Topic 底下 Create Subscription → 選 Email → 輸入你的信箱 → 收信確認
 4. 把 Topic OCID 填入 `.env` 的 `ONS_TOPIC_ID`
+
+> OCI ONS 免費額度：每月 100 萬則，足夠日常監控使用。
+
+### ntfy.sh 推播通知（選填）
+
+如果也想收手機推播：
+
+1. 手機安裝 [ntfy app](https://ntfy.sh)（iOS / Android）
+2. 在 `.env` 設定 `NTFY_TOPIC="your-topic-name"`
+3. 在 app 中訂閱同名 topic
+4. 不需要註冊帳號
+
+> `NTFY_TOPIC` 留空則不發送 ntfy 通知。
 
 ## 監控機制說明
 
@@ -287,6 +294,8 @@ oracle_cloud_monitor/
 │   ├── cost-guard.ps1    # 花費守衛（Windows）
 │   ├── oci-report.sh     # 資源報表（Mac/Linux）
 │   ├── oci-report.ps1        # 資源報表（Windows）
+│   ├── notify.sh             # 共用通知函式（Bash）
+│   ├── notify.ps1            # 共用通知函式（PowerShell）
 │   ├── ssh-login-notify.sh   # SSH 登入通知（PAM）
 │   └── setup-cron.sh         # 一鍵部署監控到遠端
 └── logs/                # 日誌（不會進 git）

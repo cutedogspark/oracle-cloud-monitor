@@ -28,9 +28,10 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 source "$ENV_FILE"
+source "${SCRIPT_DIR}/notify.sh"
 
 # 驗證必要變數
-for var in COMPARTMENT_ID AVAILABILITY_DOMAIN SUBNET_ID IMAGE_ID SSH_KEY_FILE DISPLAY_NAME OCPUS MEMORY BOOT_SIZE NTFY_TOPIC; do
+for var in COMPARTMENT_ID AVAILABILITY_DOMAIN SUBNET_ID IMAGE_ID SSH_KEY_FILE DISPLAY_NAME OCPUS MEMORY BOOT_SIZE; do
     if [ -z "${!var:-}" ]; then
         echo "❌ .env 缺少設定: $var"
         exit 1
@@ -145,12 +146,10 @@ while true; do
         log "✅ $DISPLAY_NAME 建立成功！"
         log "$result"
 
-        curl -sf \
-            -H "Title: OCI A1 搶到了！" \
-            -H "Priority: urgent" \
-            -H "Tags: tada" \
-            -d "$DISPLAY_NAME ($OCPUS OCPU / ${MEMORY}GB) 建立成功！第 ${attempt} 次嘗試" \
-            "https://ntfy.sh/${NTFY_TOPIC}" >/dev/null 2>&1
+        send_notify \
+            "OCI A1 搶到了！" \
+            "$DISPLAY_NAME ($OCPUS OCPU / ${MEMORY}GB) 建立成功！第 ${attempt} 次嘗試" \
+            "urgent"
         log "📨 已發送通知"
         break
     fi

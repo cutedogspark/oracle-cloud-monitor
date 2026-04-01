@@ -25,6 +25,7 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 source "$ENV_FILE"
+source "${SCRIPT_DIR}/notify.sh"
 
 COST_LIMIT="${COST_LIMIT:-1.0}"
 LOG_FILE="${PROJECT_DIR}/logs/cost-guard.log"
@@ -32,22 +33,6 @@ mkdir -p "$(dirname "$LOG_FILE")"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
-}
-
-notify() {
-    local title="$1"
-    local message="$2"
-    local priority="${3:-default}"
-    local tags="${4:-dollar}"
-
-    curl -sf \
-        -H "Title: $title" \
-        -H "Priority: $priority" \
-        -H "Tags: $tags" \
-        -d "$message" \
-        "https://ntfy.sh/${NTFY_TOPIC}" >/dev/null 2>&1
-
-    log "Notified: $title"
 }
 
 get_current_cost() {
@@ -97,11 +82,10 @@ for inst in json.load(sys.stdin):
         oci compute instance action --instance-id "$instance_id" --action STOP --force 2>&1 >> "$LOG_FILE"
     done
 
-    notify \
+    send_notify \
         "OCI Cost Guard TRIGGERED" \
         "Monthly cost: \$${1} USD (limit: \$${COST_LIMIT}). All ${count} instances have been STOPPED!" \
-        "urgent" \
-        "rotating_light,octagonal_sign"
+        "urgent"
 
     log "All instances stopped"
 }

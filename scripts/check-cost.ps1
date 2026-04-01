@@ -26,6 +26,9 @@ Get-Content $envFile | ForEach-Object {
     }
 }
 
+# 載入共用通知函式
+. "$scriptDir\notify.ps1"
+
 $logDir = Join-Path $projectDir "logs"
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
 $logFile = Join-Path $logDir "check-cost.log"
@@ -53,11 +56,7 @@ $costJson = & oci usage-api usage-summary request-summarized-usages `
 
 if (-not $costJson -or $costJson -match "Error") {
     Write-Log "ERROR: Failed to query OCI usage API"
-    try {
-        $body = "Failed to query OCI usage API at $(Get-Date)"
-        $headers = @{ "Title" = "OCI Cost Check Failed"; "Priority" = "high"; "Tags" = "x" }
-        Invoke-RestMethod -Uri "https://ntfy.sh/$($envVars['NTFY_TOPIC'])" -Method Post -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -Headers $headers | Out-Null
-    } catch {}
+    Send-Notify -Title "OCI Cost Check Failed" -Body "Failed to query OCI usage API at $(Get-Date)" -Priority "high"
     exit 1
 }
 
@@ -118,36 +117,15 @@ if ($total -ne 0) {
 
 if ($total -eq 0) {
     $priority = "low"
-    $tags = "white_check_mark"
     $title = "OCI Daily Report: `$0 (Free)"
 } else {
     $priority = "high"
-    $tags = "warning,dollar"
     $title = "OCI Daily Report: `$$totalStr USD"
 }
 
 Write-Log $message
 
-# === 發送 ntfy.sh 通知 ===
-try {
-    $headers = @{ "Title" = $title; "Priority" = $priority; "Tags" = $tags }
-    Invoke-RestMethod -Uri "https://ntfy.sh/$($envVars['NTFY_TOPIC'])" -Method Post -Body ([System.Text.Encoding]::UTF8.GetBytes($message)) -Headers $headers | Out-Null
-    Write-Log "Sent ntfy.sh notification"
-} catch {
-    Write-Log "ntfy.sh notification failed: $_"
-}
-
-# === 發送 email（透過 OCI ONS） ===
-if ($envVars["ONS_TOPIC_ID"]) {
-    try {
-        & oci ons message publish `
-            --topic-id $envVars["ONS_TOPIC_ID"] `
-            --title $title `
-            --body $message 2>&1 | Out-Null
-        Write-Log "Sent email via ONS topic"
-    } catch {
-        Write-Log "ONS notification failed: $_"
-    }
-}
+# === 發送通知 ===
+Send-Notify -Title $title -Body $message -Priority $priority
 
 Write-Log "Done"
