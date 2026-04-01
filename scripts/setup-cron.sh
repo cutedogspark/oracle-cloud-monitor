@@ -54,7 +54,7 @@ scp -q ~/.oci/oci_api_key_public.pem "$REMOTE":~/.oci/oci_api_key_public.pem
 
 echo "▸ 複製腳本..."
 scp -q "$ENV_FILE" "$REMOTE":~/oci-monitor/.env
-scp -q "$SCRIPT_DIR/check-cost.sh" "$SCRIPT_DIR/cost-guard.sh" "$SCRIPT_DIR/oci-report.sh" "$REMOTE":~/oci-monitor/scripts/
+scp -q "$SCRIPT_DIR/check-cost.sh" "$SCRIPT_DIR/cost-guard.sh" "$SCRIPT_DIR/oci-report.sh" "$SCRIPT_DIR/ssh-login-notify.sh" "$REMOTE":~/oci-monitor/scripts/
 
 # 5. 設定權限
 echo "▸ 設定權限..."
@@ -82,11 +82,11 @@ REMOTE_TZ=$(ssh "$REMOTE" "timedatectl 2>/dev/null | grep 'Time zone' | awk '{pr
 echo "  遠端時區: $REMOTE_TZ"
 
 # 預設使用 UTC 0:00/3:00/9:00（對應 JST 9/12/18）
-# 使用者可依自己的時區調整
-ssh "$REMOTE" "crontab -l 2>/dev/null | grep -v 'oci-monitor' | grep -v '^#.*OCI' > /tmp/cron_backup 2>/dev/null || true
+# 清除舊版 (~/.oci/) 和現有 oci-monitor 的 cron 項目
+ssh "$REMOTE" "crontab -l 2>/dev/null | grep -v 'oci-monitor' | grep -v '\.oci/check-oci-cost' | grep -v '\.oci/cost-guard' | grep -v '^#.*OCI' > /tmp/cron_backup 2>/dev/null || true
 cat >> /tmp/cron_backup <<'CRON'
 # OCI 花費通知（每天 3 次）
-0 0,6,12 * * * \$HOME/oci-monitor/scripts/check-cost.sh >> \$HOME/oci-monitor/logs/check-cost.log 2>&1
+0 0,3,9 * * * \$HOME/oci-monitor/scripts/check-cost.sh >> \$HOME/oci-monitor/logs/check-cost.log 2>&1
 # OCI 花費守衛（每小時）
 0 * * * * \$HOME/oci-monitor/scripts/cost-guard.sh >> \$HOME/oci-monitor/logs/cost-guard.log 2>&1
 CRON
@@ -94,7 +94,36 @@ crontab /tmp/cron_backup && rm /tmp/cron_backup"
 
 echo "  ✅ cron 已設定"
 
-# 9. 驗證
+# 9. 清理舊版腳本
+echo ""
+echo "▸ 清理舊版腳本 (~/.oci/ 中的監控腳本)..."
+ssh "$REMOTE" "
+    for f in check-oci-cost.sh cost-guard.sh check-oci-cost.log cost-guard.log; do
+        if [ -f \"\$HOME/.oci/\$f\" ]; then
+            mv \"\$HOME/.oci/\$f\" \"\$HOME/.oci/\${f}.bak\"
+            echo \"  已備份: ~/.oci/\$f -> ~/.oci/\${f}.bak\"
+        fi
+    done
+"
+
+# 10. 安裝 SSH 登入通知
+echo ""
+echo "▸ 設定 SSH 登入通知..."
+ssh "$REMOTE" "
+    # 複製腳本到系統路徑
+    sudo cp ~/oci-monitor/scripts/ssh-login-notify.sh /usr/local/bin/ssh-login-notify.sh
+    sudo chmod +x /usr/local/bin/ssh-login-notify.sh
+
+    # 檢查 PAM 是否已設定
+    if grep -q 'ssh-login-notify' /etc/pam.d/sshd 2>/dev/null; then
+        echo '  ✅ PAM 已設定（ssh-login-notify）'
+    else
+        echo 'session optional pam_exec.so seteuid /usr/local/bin/ssh-login-notify.sh' | sudo tee -a /etc/pam.d/sshd >/dev/null
+        echo '  ✅ PAM 設定完成'
+    fi
+"
+
+# 11. 驗證
 echo ""
 echo "▸ 目前 cron 排程:"
 ssh "$REMOTE" "crontab -l"

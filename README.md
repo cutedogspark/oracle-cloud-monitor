@@ -249,6 +249,25 @@ powershell -File scripts\cost-guard.ps1
 - **超過時自動停止所有實例**，防止持續計費
 - 發送緊急通知
 
+### ssh-login-notify.sh — SSH 登入通知
+
+- 透過 PAM 在 SSH 登入時自動觸發
+- 發送 ntfy 通知，包含登入使用者、來源 IP、時間
+- 由 `setup-cron.sh` 自動安裝，或手動安裝：
+
+```bash
+sudo cp scripts/ssh-login-notify.sh /usr/local/bin/
+sudo chmod +x /usr/local/bin/ssh-login-notify.sh
+echo 'session optional pam_exec.so seteuid /usr/local/bin/ssh-login-notify.sh' | sudo tee -a /etc/pam.d/sshd
+```
+
+相關 `.env` 設定：
+
+| 變數 | 說明 | 預設值 |
+|---|---|---|
+| `SSH_NOTIFY_ENABLED` | 啟用 SSH 登入通知 | `true` |
+| `SSH_NOTIFY_PRIORITY` | 通知優先級 | `high` |
+
 ## 專案結構
 
 ```
@@ -267,8 +286,9 @@ oracle_cloud_monitor/
 │   ├── cost-guard.sh     # 花費守衛（Mac/Linux）
 │   ├── cost-guard.ps1    # 花費守衛（Windows）
 │   ├── oci-report.sh     # 資源報表（Mac/Linux）
-│   ├── oci-report.ps1    # 資源報表（Windows）
-│   └── setup-cron.sh     # 一鍵部署監控到遠端
+│   ├── oci-report.ps1        # 資源報表（Windows）
+│   ├── ssh-login-notify.sh   # SSH 登入通知（PAM）
+│   └── setup-cron.sh         # 一鍵部署監控到遠端
 └── logs/                # 日誌（不會進 git）
 ```
 
