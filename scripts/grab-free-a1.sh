@@ -1,0 +1,126 @@
+#!/bin/bash
+# Oracle Cloud Free Tier — 搶 ARM A1.Flex 資源
+# 自動重試建立實例，直到搶到為止
+#
+# 用法: ./scripts/grab-free-a1.sh
+# 需先複製 env.example → .env 並填入你的設定
+
+set -euo pipefail
+export SUPPRESS_LABEL_WARNING=True
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+ENV_FILE="${PROJECT_DIR}/.env"
+
+if [ ! -f "$ENV_FILE" ]; then
+    echo "❌ 找不到 .env，請先複製 env.example 並填入設定："
+    echo "   cp env.example .env"
+    exit 1
+fi
+source "$ENV_FILE"
+
+# 驗證必要變數
+for var in COMPARTMENT_ID AVAILABILITY_DOMAIN SUBNET_ID IMAGE_ID SSH_KEY_FILE DISPLAY_NAME OCPUS MEMORY BOOT_SIZE NTFY_TOPIC; do
+    if [ -z "${!var:-}" ]; then
+        echo "❌ .env 缺少設定: $var"
+        exit 1
+    fi
+done
+
+SHAPE="VM.Standard.A1.Flex"
+RETRY_INTERVAL=30
+LOG_FILE="${PROJECT_DIR}/logs/grab-free-a1.log"
+mkdir -p "$(dirname "$LOG_FILE")"
+
+# shape-config 用 file:// 傳遞，避免 JSON 引號問題
+SHAPE_CONFIG_FILE=$(mktemp)
+echo "{\"ocpus\": $OCPUS, \"memoryInGBs\": $MEMORY}" > "$SHAPE_CONFIG_FILE"
+trap "rm -f $SHAPE_CONFIG_FILE" EXIT
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+parse_error() {
+    python3 -c "
+import sys, json, re
+raw = sys.stdin.read()
+m = re.search(r'\{.*\}', raw, re.DOTALL)
+if m:
+    d = json.loads(m.group())
+    print(d.get('code', ''), end='|')
+    print(d.get('message', ''), end='|')
+    print(d.get('status', ''))
+" 2>/dev/null
+}
+
+log "=========================================="
+log "開始搶 ARM A1.Flex ($OCPUS OCPU / ${MEMORY}GB RAM)"
+log "名稱: $DISPLAY_NAME"
+log "Region: $REGION"
+log "每 ${RETRY_INTERVAL} 秒重試一次"
+log "=========================================="
+
+attempt=0
+while true; do
+    attempt=$((attempt + 1))
+    log "--- 第 $attempt 次嘗試 ---"
+
+    result=$(oci compute instance launch \
+        --compartment-id "$COMPARTMENT_ID" \
+        --availability-domain "$AVAILABILITY_DOMAIN" \
+        --shape "$SHAPE" \
+        --shape-config "file://$SHAPE_CONFIG_FILE" \
+        --image-id "$IMAGE_ID" \
+        --subnet-id "$SUBNET_ID" \
+        --display-name "$DISPLAY_NAME" \
+        --boot-volume-size-in-gbs "$BOOT_SIZE" \
+        --assign-public-ip true \
+        --ssh-authorized-keys-file "$SSH_KEY_FILE" \
+        --output json 2>&1)
+
+    # 成功：回應中含有 lifecycle-state
+    if echo "$result" | grep -q '"lifecycle-state"'; then
+        log "✅ $DISPLAY_NAME 建立成功！"
+        log "$result"
+
+        curl -sf \
+            -H "Title: OCI A1 搶到了！" \
+            -H "Priority: urgent" \
+            -H "Tags: tada" \
+            -d "$DISPLAY_NAME ($OCPUS OCPU / ${MEMORY}GB) 建立成功！第 ${attempt} 次嘗試" \
+            "https://ntfy.sh/${NTFY_TOPIC}" >/dev/null 2>&1
+        log "📨 已發送通知"
+        break
+    fi
+
+    # 解析錯誤
+    parsed=$(echo "$result" | parse_error)
+    error_code=$(echo "$parsed" | cut -d'|' -f1)
+    error_msg=$(echo "$parsed" | cut -d'|' -f2)
+
+    if [ -z "$error_msg" ]; then
+        error_msg=$(echo "$result" | tail -3)
+    fi
+
+    if echo "$error_msg" | grep -qi "capacity"; then
+        log "⚠️  [缺貨] $error_msg"
+        log "等待 ${RETRY_INTERVAL} 秒後重試..."
+        sleep "$RETRY_INTERVAL"
+    elif [ "$error_code" = "TooManyRequests" ]; then
+        wait_time=$((RETRY_INTERVAL * 2))
+        log "🚫 [限流] 請求太頻繁！等待 ${wait_time} 秒..."
+        sleep "$wait_time"
+    elif echo "$error_msg" | grep -qi "timed\|timeout\|connection"; then
+        log "⏳ [超時] 連線逾時，等待 ${RETRY_INTERVAL} 秒後重試..."
+        sleep "$RETRY_INTERVAL"
+    else
+        log "❌ 失敗: ${error_code:+$error_code: }$error_msg"
+        log "等待 ${RETRY_INTERVAL} 秒後重試..."
+        sleep "$RETRY_INTERVAL"
+    fi
+done
+
+log "=========================================="
+log "完成！"
+log "=========================================="
