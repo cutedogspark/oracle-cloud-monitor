@@ -92,6 +92,57 @@ $logDir = Join-Path $projectDir "logs"
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
 $logFile = Join-Path $logDir "grab-free-a1.log"
 
+# === 準備 Reserved Public IP ===
+Write-Host "[>] 檢查 Reserved Public IP..." -ForegroundColor Yellow
+$reservedIpId = ""
+$reservedIpAddr = ""
+
+try {
+    $ipListJson = & oci network public-ip list `
+        --compartment-id $envVars["COMPARTMENT_ID"] `
+        --scope REGION --lifetime RESERVED `
+        --output json 2>&1 | Out-String
+    $ipList = ($ipListJson | ConvertFrom-Json).data
+    $availIp = $ipList | Where-Object { $_.'lifecycle-state' -in @('AVAILABLE', 'ASSIGNED') } | Select-Object -First 1
+    if ($availIp) {
+        $reservedIpId = $availIp.id
+        $reservedIpAddr = $availIp.'ip-address'
+    }
+} catch {
+    # ignore
+}
+
+if ($reservedIpId) {
+    # 取得最新 IP 地址
+    try {
+        $ipGetJson = & oci network public-ip get `
+            --public-ip-id $reservedIpId `
+            --output json 2>&1 | Out-String
+        $reservedIpAddr = ($ipGetJson | ConvertFrom-Json).data.'ip-address'
+    } catch { }
+    Write-Host "  OK 找到現有 Reserved IP: $reservedIpAddr" -ForegroundColor Green
+} else {
+    Write-Host "  沒有現有的 Reserved IP，正在建立..."
+    try {
+        $createResult = & oci network public-ip create `
+            --compartment-id $envVars["COMPARTMENT_ID"] `
+            --lifetime RESERVED `
+            --display-name "$($envVars['DISPLAY_NAME'])-ip" `
+            --output json 2>&1 | Out-String
+        $createData = ($createResult | ConvertFrom-Json).data
+        $reservedIpId = $createData.id
+        $reservedIpAddr = $createData.'ip-address'
+    } catch {
+        Write-Host "  !! 建立 Reserved IP 失敗" -ForegroundColor Red
+        exit 1
+    }
+    if (-not $reservedIpId) {
+        Write-Host "  !! 建立 Reserved IP 失敗" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "  OK 已建立 Reserved IP: $reservedIpAddr" -ForegroundColor Green
+}
+
 # shape-config 暫存檔
 $shapeConfigFile = [System.IO.Path]::GetTempFileName()
 $shapeConfig = @{ ocpus = [int]$envVars["OCPUS"]; memoryInGBs = [int]$envVars["MEMORY"] } | ConvertTo-Json
@@ -128,7 +179,7 @@ try {
                 --subnet-id $envVars["SUBNET_ID"] `
                 --display-name $envVars["DISPLAY_NAME"] `
                 --boot-volume-size-in-gbs $envVars["BOOT_SIZE"] `
-                --assign-public-ip true `
+                --assign-public-ip false `
                 --ssh-authorized-keys-file $envVars["SSH_KEY_FILE"] `
                 --output json 2>&1
 
@@ -136,12 +187,62 @@ try {
 
             if ($resultStr -match '"lifecycle-state"') {
                 Write-Log "OK $($envVars['DISPLAY_NAME']) 建立成功！"
-                Write-Log $resultStr
+
+                $instanceData = ($resultStr | ConvertFrom-Json)
+                $instanceId = if ($instanceData.data) { $instanceData.data.id } else { $instanceData.id }
+                Write-Log "實例 OCID: $instanceId"
+
+                # === 綁定 Reserved Public IP ===
+                Write-Log "[>] 等待實例進入 RUNNING 狀態..."
+                for ($w = 1; $w -le 30; $w++) {
+                    try {
+                        $stateJson = & oci compute instance get --instance-id $instanceId `
+                            --query 'data."lifecycle-state"' --raw-output 2>&1 | Out-String
+                        $state = $stateJson.Trim()
+                    } catch { $state = "UNKNOWN" }
+                    if ($state -eq "RUNNING") { break }
+                    Write-Log "  狀態: $state，等待 10 秒... ($w/30)"
+                    Start-Sleep -Seconds 10
+                }
+
+                Write-Log "[>] 取得 VNIC 資訊..."
+                $vnicId = ""
+                for ($w = 1; $w -le 10; $w++) {
+                    try {
+                        $vnicsJson = & oci compute instance list-vnics `
+                            --instance-id $instanceId --output json 2>&1 | Out-String
+                        $vnics = ($vnicsJson | ConvertFrom-Json).data
+                        if ($vnics -and $vnics.Count -gt 0) {
+                            $vnicId = $vnics[0].id
+                        }
+                    } catch { }
+                    if ($vnicId) { break }
+                    Write-Log "  VNIC 尚未就緒，等待 5 秒... ($w/10)"
+                    Start-Sleep -Seconds 5
+                }
+
+                if (-not $vnicId) {
+                    Write-Log "!! 無法取得 VNIC，請手動綁定 Reserved IP"
+                    break
+                }
+
+                $privateIpJson = & oci network private-ip list `
+                    --vnic-id $vnicId --output json 2>&1 | Out-String
+                $privateIpId = ($privateIpJson | ConvertFrom-Json).data[0].id
+
+                Write-Log "[>] 綁定 Reserved IP: $reservedIpAddr"
+                & oci network public-ip update `
+                    --public-ip-id $reservedIpId `
+                    --private-ip-id $privateIpId `
+                    --output json 2>&1 | Out-Null
+
+                $publicIp = $reservedIpAddr
+                Write-Log "固定公網 IP: $publicIp"
 
                 # 發送通知
                 Send-Notify `
                     -Title "OCI A1 搶到了！" `
-                    -Body "$($envVars['DISPLAY_NAME']) ($($envVars['OCPUS']) OCPU / $($envVars['MEMORY'])GB) 建立成功！第 ${attempt} 次嘗試" `
+                    -Body "$($envVars['DISPLAY_NAME']) ($($envVars['OCPUS']) OCPU / $($envVars['MEMORY'])GB) 建立成功！IP: $publicIp 第 ${attempt} 次嘗試" `
                     -Priority "urgent"
                 Write-Log "已發送通知"
                 break
