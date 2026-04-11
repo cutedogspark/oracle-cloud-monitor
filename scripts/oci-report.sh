@@ -8,6 +8,7 @@
 #   ./scripts/oci-report.sh volumes       # 只看儲存
 #   ./scripts/oci-report.sh network       # 只看網路
 #   ./scripts/oci-report.sh images        # 列出可用映像檔（建立實例時需要）
+#   ./scripts/oci-report.sh backups       # 查看備份
 #   ./scripts/oci-report.sh limits        # 查看免費額度上限
 
 export SUPPRESS_LABEL_WARNING=True
@@ -231,6 +232,30 @@ report_images() {
         --output table 2>/dev/null | head -20
 }
 
+# === 備份 ===
+report_backups() {
+    separator "Boot Volume Backups"
+
+    echo ""
+    oci bv boot-volume-backup list \
+        --compartment-id "${COMPARTMENT_ID:-$TENANCY_ID}" \
+        --all \
+        --sort-by TIMECREATED \
+        --sort-order DESC \
+        --query 'data[?"lifecycle-state"!=`TERMINATED`].{"Name":"display-name","Size(GB)":"size-in-gbs","Type":"type","State":"lifecycle-state","Created":"time-created"}' \
+        --output table 2>/dev/null || echo "  (none or query failed)"
+
+    echo ""
+    echo "▸ Free Tier: 5 boot volume backups included"
+    local count
+    count=$(oci bv boot-volume-backup list \
+        --compartment-id "${COMPARTMENT_ID:-$TENANCY_ID}" \
+        --all \
+        --query 'length(data[?"lifecycle-state"==`AVAILABLE`])' \
+        --raw-output 2>/dev/null)
+    echo "  Used: ${count:-0}/5"
+}
+
 # === 免費額度上限 ===
 report_limits() {
     separator "OCI Always Free Tier Limits"
@@ -314,6 +339,7 @@ case "$SECTION" in
     volumes)    report_volumes ;;
     network)    report_network ;;
     images)     report_images ;;
+    backups)    report_backups ;;
     limits)     report_limits ;;
     account)    report_account ;;
     all)
@@ -321,11 +347,12 @@ case "$SECTION" in
         report_instances
         report_cost
         report_volumes
+        report_backups
         report_network
         report_limits
         ;;
     *)
-        echo "Usage: $0 [instances|cost|volumes|network|images|limits|account|all]"
+        echo "Usage: $0 [instances|cost|volumes|network|images|backups|limits|account|all]"
         exit 1
         ;;
 esac

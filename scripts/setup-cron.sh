@@ -54,7 +54,7 @@ scp -q ~/.oci/oci_api_key_public.pem "$REMOTE":~/.oci/oci_api_key_public.pem
 
 echo "▸ 複製腳本..."
 scp -q "$ENV_FILE" "$REMOTE":~/oci-monitor/.env
-scp -q "$SCRIPT_DIR/notify.sh" "$SCRIPT_DIR/check-cost.sh" "$SCRIPT_DIR/cost-guard.sh" "$SCRIPT_DIR/oci-report.sh" "$SCRIPT_DIR/ssh-login-notify.sh" "$REMOTE":~/oci-monitor/scripts/
+scp -q "$SCRIPT_DIR/notify.sh" "$SCRIPT_DIR/check-cost.sh" "$SCRIPT_DIR/cost-guard.sh" "$SCRIPT_DIR/oci-report.sh" "$SCRIPT_DIR/ssh-login-notify.sh" "$SCRIPT_DIR/backup-instance.sh" "$REMOTE":~/oci-monitor/scripts/
 
 # 5. 設定權限
 echo "▸ 設定權限..."
@@ -90,6 +90,8 @@ cat >> /tmp/cron_backup <<'CRON'
 0 0,3,9 * * * \$HOME/oci-monitor/scripts/check-cost.sh >> \$HOME/oci-monitor/logs/check-cost.log 2>&1
 # OCI 花費守衛（每小時）
 0 * * * * \$HOME/oci-monitor/scripts/cost-guard.sh >> \$HOME/oci-monitor/logs/cost-guard.log 2>&1
+# OCI Boot Volume 自動備份（每 3 小時）
+0 */3 * * * \$HOME/oci-monitor/scripts/backup-instance.sh --auto >> \$HOME/oci-monitor/logs/backup-instance.log 2>&1
 CRON
 crontab /tmp/cron_backup && rm /tmp/cron_backup"
 

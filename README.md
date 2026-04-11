@@ -4,6 +4,7 @@ Oracle Cloud Infrastructure (OCI) Always Free 資源自動化工具，包含：
 
 - **搶資源** — 自動重試建立 ARM A1.Flex 免費實例（搶不到就一直試）
 - **花費監控** — 定期查詢帳單，超過免費額度自動停機
+- **自動備份** — 定期 Boot Volume 備份 + 輪替，一鍵還原
 - **資源報表** — 一鍵查看實例、儲存、網路、花費等使用狀況
 
 ## OCI Always Free 額度
@@ -148,6 +149,7 @@ powershell -File scripts\oci-report.ps1
 ./scripts/oci-report.sh volumes     # 儲存
 ./scripts/oci-report.sh network     # 網路
 ./scripts/oci-report.sh images      # 可用映像檔（建立實例時需要 IMAGE_ID）
+./scripts/oci-report.sh backups     # 備份列表
 ./scripts/oci-report.sh limits      # 免費額度上限
 
 # Windows PowerShell
@@ -230,7 +232,54 @@ crontab -e
 0 * * * * /path/to/scripts/cost-guard.sh >> /path/to/logs/cost-guard.log 2>&1
 ```
 
-### 7. 手動測試
+### 7. 備份與還原
+
+#### 手動備份
+
+```bash
+./scripts/backup-instance.sh                # 互動模式：選擇實例、類型、確認
+./scripts/backup-instance.sh --auto         # 自動模式：直接備份（cron 用）
+./scripts/backup-instance.sh <instance-id>  # 指定實例直接備份
+```
+
+備份使用 OCI Boot Volume Backup（Always Free 包含 5 個額度），預設保留最新 2 個，自動輪替舊備份。
+
+#### 自動備份（每週）
+
+透過 `setup-cron.sh` 部署後會自動設定每週日 02:00 備份。也可手動加入 cron：
+
+```cron
+0 */3 * * * ~/oci-monitor/scripts/backup-instance.sh --auto >> ~/oci-monitor/logs/backup-instance.log 2>&1
+```
+
+#### 從備份還原
+
+```bash
+./scripts/restore-instance.sh                # 互動模式：列出所有備份讓你選
+./scripts/restore-instance.sh <backup-id>    # 直接指定備份 OCID 還原
+```
+
+還原流程：
+1. 終止現有實例（舊 Boot Volume 保留以防萬一）
+2. 從備份建立新的 Boot Volume
+3. 用新 Boot Volume 啟動新實例
+4. 自動重新綁定 Reserved IP
+5. 確認成功後可選擇刪除舊 Boot Volume
+
+#### 查看備份狀態
+
+```bash
+./scripts/oci-report.sh backups
+```
+
+`.env` 備份相關設定：
+
+| 變數 | 說明 | 預設值 |
+|---|---|---|
+| `BACKUP_KEEP` | 保留備份數量 | `5` |
+| `BACKUP_TYPE` | 備份類型 (`INCREMENTAL` / `FULL`) | `INCREMENTAL` |
+
+### 8. 手動測試
 
 ```bash
 # macOS / Linux
@@ -322,6 +371,8 @@ oracle_cloud_monitor/
 │   ├── notify.sh             # 共用通知函式（Bash）
 │   ├── notify.ps1            # 共用通知函式（PowerShell）
 │   ├── ssh-login-notify.sh   # SSH 登入通知（PAM）
+│   ├── backup-instance.sh    # Boot Volume 自動備份 + 輪替
+│   ├── restore-instance.sh   # 從備份還原實例
 │   ├── setup-cron.sh         # 一鍵部署監控到遠端
 │   ├── list-arm-images.sh    # 查詢可用 ARM 映像檔
 │   └── manage-instances.sh   # 互動式實例管理（查看/終止）
