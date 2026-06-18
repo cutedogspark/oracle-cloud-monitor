@@ -98,8 +98,8 @@ mkdir -p "$(dirname "$LOG_FILE")"
 echo "▸ 檢查 Reserved Public IP..."
 RESERVED_IP_JSON=$(oci network public-ip list \
     --compartment-id "$COMPARTMENT_ID" \
-    --scope REGION --lifetime RESERVED \
-    --output json 2>&1) || RESERVED_IP_JSON=""
+    --scope REGION --lifetime RESERVED --all \
+    --output json 2>/dev/null) || RESERVED_IP_JSON=""
 
 RESERVED_IP_ID=""
 if [ -n "$RESERVED_IP_JSON" ]; then
@@ -116,7 +116,7 @@ fi
 
 if [ -n "$RESERVED_IP_ID" ]; then
     RESERVED_IP_GET=$(oci network public-ip get \
-        --public-ip-id "$RESERVED_IP_ID" --output json 2>&1) || true
+        --public-ip-id "$RESERVED_IP_ID" --output json 2>/dev/null) || true
     RESERVED_IP_ADDR=$(echo "$RESERVED_IP_GET" | $PYTHON -c "
 import sys,json
 try: print(json.load(sys.stdin)['data']['ip-address'])
@@ -129,7 +129,7 @@ else
         --compartment-id "$COMPARTMENT_ID" \
         --lifetime RESERVED \
         --display-name "${DISPLAY_NAME}-ip" \
-        --output json 2>&1) || true
+        --output json 2>/dev/null) || true
     RESERVED_IP_ID=$(echo "$RESERVED_RESULT" | $PYTHON -c "
 import sys,json
 try: print(json.load(sys.stdin)['data']['id'])
@@ -193,7 +193,7 @@ while true; do
         --boot-volume-size-in-gbs "$BOOT_SIZE" \
         --assign-public-ip false \
         --ssh-authorized-keys-file "$SSH_KEY_FILE" \
-        --output json 2>&1)
+        --output json 2>&1) || true
 
     # 成功：回應中含有 lifecycle-state
     if echo "$result" | grep -q '"lifecycle-state"'; then
