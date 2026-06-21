@@ -49,8 +49,18 @@ ssh "$REMOTE" "mkdir -p ~/.oci ~/oci-monitor/scripts ~/oci-monitor/logs"
 # 4. 複製檔案
 echo "▸ 複製設定檔..."
 scp -q ~/.oci/config "$REMOTE":~/.oci/config
-scp -q ~/.oci/oci_api_key.pem "$REMOTE":~/.oci/oci_api_key.pem
-scp -q ~/.oci/oci_api_key_public.pem "$REMOTE":~/.oci/oci_api_key_public.pem
+
+# 依本機 config 取出實際 key_file 路徑來複製（避免寫死檔名與 config 不一致）
+LOCAL_KEY=$(grep -E '^key_file' ~/.oci/config | head -1 | cut -d= -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e "s#^~#$HOME#")
+if [ -z "$LOCAL_KEY" ] || [ ! -f "$LOCAL_KEY" ]; then
+    echo "❌ 無法從 ~/.oci/config 找到有效的 key_file（取得: '${LOCAL_KEY:-空}'）"
+    exit 1
+fi
+scp -q "$LOCAL_KEY" "$REMOTE":~/.oci/oci_api_key.pem
+scp -q ~/.oci/oci_api_key_public.pem "$REMOTE":~/.oci/oci_api_key_public.pem 2>/dev/null || true
+
+# 改寫遠端 config 的 key_file 為遠端絕對路徑（本機路徑在 VM 上不存在會導致 OCI 查詢全失敗）
+ssh "$REMOTE" 'sed -i "s#^key_file=.*#key_file=$HOME/.oci/oci_api_key.pem#" ~/.oci/config'
 
 echo "▸ 複製腳本..."
 scp -q "$ENV_FILE" "$REMOTE":~/oci-monitor/.env
