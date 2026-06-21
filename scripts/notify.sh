@@ -20,9 +20,11 @@ send_notify() {
     local body="$2"
     local priority="${3:-default}"
     local sent=0
+    local configured=0
 
     # 1. ONS email（預設）
     if [ -n "${ONS_TOPIC_ID:-}" ]; then
+        configured=1
         oci ons message publish \
             --topic-id "$ONS_TOPIC_ID" \
             --title "$title" \
@@ -37,6 +39,7 @@ send_notify() {
 
     # 2. ntfy.sh（選填）
     if [ -n "${NTFY_TOPIC:-}" ]; then
+        configured=1
         local ntfy_tags="bell"
         case "$priority" in
             urgent) ntfy_tags="rotating_light" ;;
@@ -58,9 +61,11 @@ send_notify() {
         fi
     fi
 
-    # 都沒設定
-    if [ $sent -eq 0 ]; then
+    # 設定與發送結果判斷
+    if [ $configured -eq 0 ]; then
         echo "[notify] WARNING: 未設定任何通知方式（ONS_TOPIC_ID 和 NTFY_TOPIC 都是空的）" >&2
         echo "[notify] 請在 .env 中至少設定一個通知管道" >&2
+    elif [ $sent -eq 0 ]; then
+        echo "[notify] WARNING: 已設定的通知管道全部發送失敗，請檢查 OCI 設定或網路" >&2
     fi
 }
