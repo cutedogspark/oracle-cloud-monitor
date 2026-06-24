@@ -14,6 +14,8 @@ fi
 # PAM 環境下 PATH 和 HOME 可能未正確設定
 export PATH="/usr/local/bin:/usr/bin:/bin:/snap/bin:$PATH"
 PAM_USER_HOME=$(getent passwd "${PAM_USER}" | cut -d: -f6)
+# oci CLI 以 $HOME 解析 ~/.oci/config，PAM 觸發時 HOME 可能為空而誤抓 /root/.oci/config
+export HOME="$PAM_USER_HOME"
 
 # 載入 .env 設定
 ENV_FILE="${PAM_USER_HOME}/oci-monitor/.env"
