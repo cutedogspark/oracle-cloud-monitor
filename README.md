@@ -1,28 +1,28 @@
 # Oracle Cloud Free Tier Monitor
 
-Oracle Cloud Infrastructure (OCI) Always Free 資源自動化工具，包含：
+Oracle Cloud Infrastructure (OCI) Always Free resource automation tools, including:
 
-- **搶資源** — 自動重試建立 ARM A1.Flex 免費實例（搶不到就一直試）
-- **花費監控** — 定期查詢帳單，超過免費額度自動停機
-- **自動備份** — 定期 Boot Volume 備份 + 輪替，一鍵還原
-- **資源報表** — 一鍵查看實例、儲存、網路、花費等使用狀況
+- **Resource Grabbing** — Automatically retries creating ARM A1.Flex free instances (keeps trying until successful)
+- **Cost Monitoring** — Periodically queries billing and automatically stops instances when free tier limits are exceeded
+- **Automatic Backup** — Scheduled Boot Volume backups with rotation and one-click restore
+- **Resource Reporting** — One-command overview of instances, storage, network, and cost usage
 
-## OCI Always Free 額度
+## OCI Always Free Limits
 
-| 資源 | 免費上限 |
+| Resource | Free Limit |
 |---|---|
-| ARM Ampere A1.Flex | 4 OCPU / 24 GB RAM（可分多台） |
-| AMD E2.1.Micro | 2 台（各 1/8 OCPU / 1 GB） |
-| Boot Volume | 200 GB（所有實例合計） |
-| Block Volume | 2 個 / 200 GB |
+| ARM Ampere A1.Flex | 4 OCPU / 24 GB RAM (can be split across multiple instances) |
+| AMD E2.1.Micro | 2 instances (each 1/8 OCPU / 1 GB) |
+| Boot Volume | 200 GB (total across all instances) |
+| Block Volume | 2 volumes / 200 GB |
 | Object Storage | 20 GB |
-| 出站流量 | 10 TB/月 |
+| Outbound Data Transfer | 10 TB/month |
 
-> **注意**：ARM A1 資源非常搶手，特別是大阪、東京等亞太區域。建立時常出現 `Out of host capacity`，需要持續重試。
+> **Note**: ARM A1 resources are highly competitive, especially in Asia-Pacific regions like Osaka and Tokyo. Instance creation often fails with `Out of host capacity`, requiring continuous retries.
 
-## 帳戶類型（重要）
+## Account Type (Important)
 
-搶資源前，請確認你的 OCI 帳戶已升級為 **Pay As You Go (PAYG)**：
+Before grabbing resources, ensure your OCI account has been upgraded to **Pay As You Go (PAYG)**:
 
 ```bash
 # macOS / Linux
@@ -32,70 +32,70 @@ Oracle Cloud Infrastructure (OCI) Always Free 資源自動化工具，包含：
 powershell -File scripts\oci-report.ps1 account
 ```
 
-|  | Free Trial（免費試用） | Pay As You Go（隨用隨付） |
+|  | Free Trial | Pay As You Go |
 |---|---|---|
-| 免費額度 | $300 USD / 30 天 | Always Free 資源永久免費 |
-| ARM A1 搶到後 | 試用到期後**可能被回收** | **永久保留** |
-| 超出免費額度 | 不收費（到期停用） | 超出部分按量收費 |
-| 需要信用卡 | 不需要 | 需要（不主動扣款） |
+| Free Credits | $300 USD / 30 days | Always Free resources permanently free |
+| After grabbing ARM A1 | **May be reclaimed** after trial expires | **Permanently retained** |
+| Exceeding free limits | No charge (suspended after expiry) | Pay-as-you-go for overage |
+| Credit card required | No | Yes (no automatic charges) |
 
-> **強烈建議**：升級為 PAYG 再搶資源，否則搶到的 ARM A1 在試用期結束後會被回收。
-> 升級方式：OCI Console → Billing → **Upgrade to Paid**
+> **Strongly Recommended**: Upgrade to PAYG before grabbing resources, otherwise ARM A1 instances will be reclaimed after the trial period ends.
+> Upgrade path: OCI Console → Billing → **Upgrade to Paid**
 >
-> 升級後只要不超出 Always Free 額度，**不會產生任何費用**。腳本內建帳戶類型檢查，非 PAYG 時會提示。
+> After upgrade, as long as you stay within Always Free limits, **no charges will be incurred**. Scripts include built-in account type checks and will prompt if not PAYG.
 
-## 支援平台
+## Supported Platforms
 
-| 平台 | 架構 | 腳本格式 |
+| Platform | Architecture | Script Format |
 |---|---|---|
 | macOS | ARM (M1/M2/M3) / Intel | `.sh` (Bash) |
 | Linux | AMD64 / ARM64 | `.sh` (Bash) |
 | Windows 11 | AMD64 | `.ps1` (PowerShell) |
 
-## 前置需求
+## Prerequisites
 
-- [OCI CLI](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm) 已安裝並設定好 API Key
+- [OCI CLI](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm) installed and configured with API Key
 - Python 3
 - curl
-- 一個 [ntfy.sh](https://ntfy.sh) topic（免費推播通知）
+- An [ntfy.sh](https://ntfy.sh) topic (free push notifications)
 
-### 一鍵安裝所有工具
+### One-Click Tool Installation
 
-**macOS / Linux：**
+**macOS / Linux:**
 
 ```bash
 ./scripts/install-tools.sh
 ```
 
-**Windows PowerShell：**
+**Windows PowerShell:**
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install-tools.ps1
 ```
 
-腳本會自動偵測平台並安裝 OCI CLI、Python 3，同時檢查設定是否正確。
+The script automatically detects the platform and installs OCI CLI, Python 3, and verifies configuration.
 
-### 手動安裝 OCI CLI
+### Manual OCI CLI Installation
 
 ```bash
 # macOS / Linux
 bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)"
 
-# Windows（PowerShell 或 pip）
+# Windows (PowerShell or pip)
 pip install oci-cli
 ```
 
-### 設定 API Key
+### Configure API Key
 
 ```bash
 oci setup config
 ```
 
-依照提示輸入 Tenancy OCID、User OCID、Region 等。產生的 key 需到 OCI Console → Profile → API Keys 上傳公鑰。
+Follow prompts to enter Tenancy OCID, User OCID, Region, etc. Upload the generated public key to OCI Console → Profile → API Keys.
 
-## 快速開始
+## Quick Start
 
-### 1. 複製設定檔
+### 1. Copy Configuration File
 
 ```bash
 # macOS / Linux
@@ -105,7 +105,7 @@ cp env.example .env
 copy env.example .env
 ```
 
-編輯 `.env`，填入你的 OCI 資訊：
+Edit `.env` and fill in your OCI information:
 
 ```bash
 # macOS / Linux
@@ -115,22 +115,22 @@ vim .env
 notepad .env
 ```
 
-**必填欄位：**
+**Required Fields:**
 
-| 欄位 | 說明 | 取得方式 |
+| Field | Description | How to Obtain |
 |---|---|---|
 | `TENANCY_ID` | Tenancy OCID | OCI Console → Profile → Tenancy |
-| `COMPARTMENT_ID` | Compartment OCID | 通常跟 Tenancy 相同 |
-| `REGION` | 區域代碼 | 如 `ap-osaka-1`、`ap-tokyo-1` |
-| `AVAILABILITY_DOMAIN` | 可用性網域 | `oci iam availability-domain list` |
-| `SUBNET_ID` | 子網路 OCID | `oci network subnet list --compartment-id <ID>` |
-| `IMAGE_ID` | 映像檔 OCID | `./scripts/oci-report.sh images` |
-| `SSH_KEY_FILE` | SSH 公鑰路徑 | 預設 `~/.ssh/id_rsa.pub` |
-| `NTFY_TOPIC` | ntfy.sh 通知 topic | 自訂，如 `my-oci-notify` |
+| `COMPARTMENT_ID` | Compartment OCID | Usually same as Tenancy |
+| `REGION` | Region code | e.g., `ap-osaka-1`, `ap-tokyo-1` |
+| `AVAILABILITY_DOMAIN` | Availability Domain | `oci iam availability-domain list` |
+| `SUBNET_ID` | Subnet OCID | `oci network subnet list --compartment-id <ID>` |
+| `IMAGE_ID` | Image OCID | `./scripts/oci-report.sh images` |
+| `SSH_KEY_FILE` | SSH public key path | Default `~/.ssh/id_rsa.pub` |
+| `NTFY_TOPIC` | ntfy.sh notification topic | Custom, e.g., `my-oci-notify` |
 
-### 2. 查看資源報表
+### 2. View Resource Reports
 
-確認設定正確，先跑報表看看：
+Verify configuration is correct by running reports first:
 
 ```bash
 # macOS / Linux
@@ -140,23 +140,23 @@ notepad .env
 powershell -File scripts\oci-report.ps1
 ```
 
-可單獨查看特定項目：
+View specific items individually:
 
 ```bash
 # macOS / Linux
-./scripts/oci-report.sh instances   # 實例
-./scripts/oci-report.sh cost        # 花費
-./scripts/oci-report.sh volumes     # 儲存
-./scripts/oci-report.sh network     # 網路
-./scripts/oci-report.sh images      # 可用映像檔（建立實例時需要 IMAGE_ID）
-./scripts/oci-report.sh backups     # 備份列表
-./scripts/oci-report.sh limits      # 免費額度上限
+./scripts/oci-report.sh instances   # Instances
+./scripts/oci-report.sh cost        # Cost
+./scripts/oci-report.sh volumes     # Storage
+./scripts/oci-report.sh network     # Network
+./scripts/oci-report.sh images      # Available images (needed for IMAGE_ID when creating instances)
+./scripts/oci-report.sh backups     # Backup list
+./scripts/oci-report.sh limits      # Free tier limits
 
 # Windows PowerShell
 powershell -File scripts\oci-report.ps1 instances
 ```
 
-### 3. 搶 ARM A1 免費實例
+### 3. Grab ARM A1 Free Instance
 
 ```bash
 # macOS / Linux
@@ -166,175 +166,175 @@ powershell -File scripts\oci-report.ps1 instances
 powershell -ExecutionPolicy Bypass -File scripts\grab-free-a1.ps1
 ```
 
-腳本會每 30 秒重試一次，直到建立成功。搶到後會自動綁定 **Reserved Public IP**（固定 IP），並透過 ntfy.sh 推播通知。
+The script retries every 30 seconds until successfully created. After grabbing, it automatically binds a **Reserved Public IP** (static IP) and sends notifications via ntfy.sh.
 
-> Reserved IP 邏輯：腳本啟動時會自動查詢帳戶中是否已有 Reserved IP，有就重複使用（IP 不變），沒有則自動建立。Free Tier 包含 1 個免費 Reserved IP。
+> Reserved IP logic: When the script starts, it automatically checks if a Reserved IP already exists in the account. If yes, it reuses it (IP remains unchanged); if no, it creates one automatically. Free Tier includes 1 free Reserved IP.
 
-> **提示**：macOS / Linux 建議用 `nohup` 或 `tmux` 在背景執行，可能需要數小時甚至數天：
+> **Tip**: For macOS / Linux, it's recommended to run in background using `nohup` or `tmux`, as it may take hours or even days:
 >
 > ```bash
 > nohup ./scripts/grab-free-a1.sh &
 > ```
 >
-> Windows 建議開一個獨立的 PowerShell 視窗執行，或使用 Task Scheduler。
+> For Windows, open a dedicated PowerShell window or use Task Scheduler.
 
-### 4. 查詢可用映像檔
+### 4. Query Available Images
 
-搶資源前可查詢該 Region 所有 ARM image，選擇你要的 OS：
+Before grabbing resources, query all ARM images in the region to choose your OS:
 
 ```bash
-./scripts/list-arm-images.sh              # 列出所有 OS
-./scripts/list-arm-images.sh ubuntu        # 只看 Ubuntu
-./scripts/list-arm-images.sh oracle        # 只看 Oracle Linux
+./scripts/list-arm-images.sh              # List all OS
+./scripts/list-arm-images.sh ubuntu        # Ubuntu only
+./scripts/list-arm-images.sh oracle        # Oracle Linux only
 ```
 
-找到目標 image 後，把 OCID 填入 `.env` 的 `IMAGE_ID`。
+After finding the target image, fill its OCID into `IMAGE_ID` in `.env`.
 
-### 5. 管理現有實例
+### 5. Manage Existing Instances
 
-互動式查看 / 終止實例：
+Interactive view/terminate instances:
 
 ```bash
 ./scripts/manage-instances.sh
 ```
 
-會列出所有實例（含狀態、公網 IP、規格），可選擇要終止的編號。
+Lists all instances (including status, public IP, specs), allowing you to select which ones to terminate.
 
-### 6. 設定花費監控
+### 6. Configure Cost Monitoring
 
-#### 方法一：一鍵安裝到遠端主機（推薦）
+#### Method 1: One-Click Installation to Remote Host (Recommended)
 
-搶到實例後，用 setup-cron 把監控部署到遠端：
+After grabbing an instance, use setup-cron to deploy monitoring remotely:
 
 ```bash
-# Ubuntu image 預設使用者為 ubuntu，Oracle Linux 為 opc
+# Default user for Ubuntu image is ubuntu, for Oracle Linux is opc
 ./scripts/setup-cron.sh ubuntu@<your-instance-ip>
 ```
 
-這會自動：
-1. 在遠端安裝 OCI CLI
-2. 複製設定檔和腳本
-3. 設定 cron 排程（每小時檢查花費、每天 3 次通知）
+This automatically:
+1. Installs OCI CLI on remote host
+2. Copies configuration files and scripts
+3. Sets up cron schedule (hourly cost check, 3 daily notifications)
 
-#### 方法二：手動設定 cron
+#### Method 2: Manual Cron Setup
 
-SSH 到你的 OCI 實例，加入排程：
+SSH into your OCI instance and add schedule:
 
 ```bash
 crontab -e
 ```
 
 ```cron
-# OCI 花費通知（每天 3 次，依你的時區調整時間）
+# OCI cost notification (3 times daily, adjust time per your timezone)
 0 0,8,16 * * * /path/to/scripts/check-cost.sh >> /path/to/logs/check-cost.log 2>&1
 
-# OCI 花費守衛（每小時，超過 $1 自動停機）
+# OCI cost guard (hourly, auto-stop when exceeding $1)
 0 * * * * /path/to/scripts/cost-guard.sh >> /path/to/logs/cost-guard.log 2>&1
 ```
 
-### 7. 備份與還原
+### 7. Backup and Restore
 
-#### 手動備份
+#### Manual Backup
 
 ```bash
-./scripts/backup-instance.sh                # 互動模式：選擇實例、類型、確認
-./scripts/backup-instance.sh --auto         # 自動模式：直接備份（cron 用）
-./scripts/backup-instance.sh <instance-id>  # 指定實例直接備份
+./scripts/backup-instance.sh                # Interactive mode: select instance, type, confirm
+./scripts/backup-instance.sh --auto         # Auto mode: direct backup (for cron)
+./scripts/backup-instance.sh <instance-id>  # Direct backup of specified instance
 ```
 
-備份使用 OCI Boot Volume Backup（Always Free 包含 5 個額度），預設保留最新 2 個，自動輪替舊備份。
+Backups use OCI Boot Volume Backup (Always Free includes 5 slots), defaulting to keeping latest 2 backups with automatic rotation of old backups.
 
-#### 自動備份（每週）
+#### Automatic Backup (Weekly)
 
-透過 `setup-cron.sh` 部署後會自動設定每週日 02:00 備份。也可手動加入 cron：
+After deployment via `setup-cron.sh`, weekly backups are automatically scheduled for Sunday 02:00. Can also be manually added to cron:
 
 ```cron
 0 */3 * * * ~/oci-monitor/scripts/backup-instance.sh --auto >> ~/oci-monitor/logs/backup-instance.log 2>&1
 ```
 
-#### 從備份還原
+#### Restore from Backup
 
 ```bash
-./scripts/restore-instance.sh                # 互動模式：列出所有備份讓你選
-./scripts/restore-instance.sh <backup-id>    # 直接指定備份 OCID 還原
+./scripts/restore-instance.sh                # Interactive mode: lists all backups for selection
+./scripts/restore-instance.sh <backup-id>    # Direct restore using specified backup OCID
 ```
 
-還原流程：
-1. 終止現有實例（舊 Boot Volume 保留以防萬一）
-2. 從備份建立新的 Boot Volume
-3. 用新 Boot Volume 啟動新實例
-4. 自動重新綁定 Reserved IP
-5. 確認成功後可選擇刪除舊 Boot Volume
+Restore process:
+1. Terminate existing instance (old Boot Volume retained as precaution)
+2. Create new Boot Volume from backup
+3. Launch new instance with new Boot Volume
+4. Automatically rebind Reserved IP
+5. After confirmation, optionally delete old Boot Volume
 
-#### 查看備份狀態
+#### Check Backup Status
 
 ```bash
 ./scripts/oci-report.sh backups
 ```
 
-`.env` 備份相關設定：
+`.env` backup-related settings:
 
-| 變數 | 說明 | 預設值 |
+| Variable | Description | Default |
 |---|---|---|
-| `BACKUP_KEEP` | 保留備份數量 | `5` |
-| `BACKUP_TYPE` | 備份類型 (`INCREMENTAL` / `FULL`) | `INCREMENTAL` |
+| `BACKUP_KEEP` | Number of backups to retain | `5` |
+| `BACKUP_TYPE` | Backup type (`INCREMENTAL` / `FULL`) | `INCREMENTAL` |
 
-### 8. 手動測試
+### 8. Manual Testing
 
 ```bash
 # macOS / Linux
-./scripts/check-cost.sh     # 花費通知（會發送 ntfy 推播）
-./scripts/cost-guard.sh     # 花費守衛
+./scripts/check-cost.sh     # Cost notification (sends ntfy push)
+./scripts/cost-guard.sh     # Cost guard
 
 # Windows PowerShell
 powershell -File scripts\check-cost.ps1
 powershell -File scripts\cost-guard.ps1
 ```
 
-## 通知設定
+## Notification Configuration
 
-所有腳本透過共用的 `notify.sh` / `notify.ps1` 發送通知。**ONS email 為預設**，ntfy.sh 為選填，兩者可同時啟用。
+All scripts send notifications via shared `notify.sh` / `notify.ps1`. **ONS email is default**, ntfy.sh is optional; both can be enabled simultaneously.
 
-### Email 通知（預設，透過 OCI ONS）
+### Email Notification (Default, via OCI ONS)
 
 1. OCI Console → Application Integration → Notifications
-2. Create Topic → 記下 Topic OCID
-3. 在 Topic 底下 Create Subscription → 選 Email → 輸入你的信箱 → 收信確認
-4. 把 Topic OCID 填入 `.env` 的 `ONS_TOPIC_ID`
+2. Create Topic → Note Topic OCID
+3. Under Topic, Create Subscription → Select Email → Enter your email → Confirm via received email
+4. Fill Topic OCID into `ONS_TOPIC_ID` in `.env`
 
-> OCI ONS 免費額度：每月 100 萬則，足夠日常監控使用。
+> OCI ONS free limit: 1 million messages/month, sufficient for daily monitoring.
 
-### ntfy.sh 推播通知（選填）
+### ntfy.sh Push Notification (Optional)
 
-如果也想收手機推播：
+If you also want mobile push notifications:
 
-1. 手機安裝 [ntfy app](https://ntfy.sh)（iOS / Android）
-2. 在 `.env` 設定 `NTFY_TOPIC="your-topic-name"`
-3. 在 app 中訂閱同名 topic
-4. 不需要註冊帳號
+1. Install [ntfy app](https://ntfy.sh) on phone (iOS / Android)
+2. Set `NTFY_TOPIC="your-topic-name"` in `.env`
+3. Subscribe to same topic in app
+4. No registration required
 
-> `NTFY_TOPIC` 留空則不發送 ntfy 通知。
+> Leave `NTFY_TOPIC` empty to disable ntfy notifications.
 
-## 監控機制說明
+## Monitoring Mechanism Details
 
-### check-cost.sh — 花費通知
+### check-cost.sh — Cost Notification
 
-- 查詢 OCI Usage API 取得當月累計花費
-- 列出所有 RUNNING 狀態的實例
-- 花費 $0 → 低優先通知（Free Tier 正常）
-- 花費 > $0 → 高優先通知（可能超出免費額度）
+- Queries OCI Usage API for current month cumulative cost
+- Lists all instances in RUNNING state
+- Cost $0 → Low priority notification (Free Tier normal)
+- Cost > $0 → High priority notification (may exceed free limits)
 
-### cost-guard.sh — 花費守衛
+### cost-guard.sh — Cost Guard
 
-- 查詢當月花費是否超過 `COST_LIMIT`（預設 $1 USD）
-- **超過時自動停止所有實例**，防止持續計費
-- 發送緊急通知
+- Checks if current month cost exceeds `COST_LIMIT` (default $1 USD)
+- **Automatically stops all instances when exceeded** to prevent continued billing
+- Sends emergency notification
 
-### ssh-login-notify.sh — SSH 登入通知
+### ssh-login-notify.sh — SSH Login Notification
 
-- 透過 PAM 在 SSH 登入時自動觸發
-- 發送 ntfy 通知，包含登入使用者、來源 IP、時間
-- 由 `setup-cron.sh` 自動安裝，或手動安裝：
+- Automatically triggered via PAM on SSH login
+- Sends ntfy notification containing login user, source IP, timestamp
+- Automatically installed by `setup-cron.sh`, or manual installation:
 
 ```bash
 sudo cp scripts/ssh-login-notify.sh /usr/local/bin/
@@ -342,72 +342,72 @@ sudo chmod +x /usr/local/bin/ssh-login-notify.sh
 echo 'session optional pam_exec.so seteuid /usr/local/bin/ssh-login-notify.sh' | sudo tee -a /etc/pam.d/sshd
 ```
 
-相關 `.env` 設定：
+Related `.env` settings:
 
-| 變數 | 說明 | 預設值 |
+| Variable | Description | Default |
 |---|---|---|
-| `SSH_NOTIFY_ENABLED` | 啟用 SSH 登入通知 | `true` |
-| `SSH_NOTIFY_PRIORITY` | 通知優先級 | `high` |
+| `SSH_NOTIFY_ENABLED` | Enable SSH login notification | `true` |
+| `SSH_NOTIFY_PRIORITY` | Notification priority | `high` |
 
-## 專案結構
+## Project Structure
 
 ```
 oracle_cloud_monitor/
 ├── README.md
-├── env.example          # 設定檔範本
-├── .env                 # 你的設定（不會進 git）
+├── env.example          # Configuration template
+├── .env                 # Your configuration (not committed to git)
 ├── .gitignore
 ├── scripts/
-│   ├── install-tools.sh  # 工具安裝（Mac/Linux）
-│   ├── install-tools.ps1 # 工具安裝（Windows PowerShell）
-│   ├── grab-free-a1.sh   # 搶 ARM A1（Mac/Linux）
-│   ├── grab-free-a1.ps1  # 搶 ARM A1（Windows）
-│   ├── check-cost.sh     # 花費通知（Mac/Linux）
-│   ├── check-cost.ps1    # 花費通知（Windows）
-│   ├── cost-guard.sh     # 花費守衛（Mac/Linux）
-│   ├── cost-guard.ps1    # 花費守衛（Windows）
-│   ├── oci-report.sh     # 資源報表（Mac/Linux）
-│   ├── oci-report.ps1        # 資源報表（Windows）
-│   ├── notify.sh             # 共用通知函式（Bash）
-│   ├── notify.ps1            # 共用通知函式（PowerShell）
-│   ├── ssh-login-notify.sh   # SSH 登入通知（PAM）
-│   ├── backup-instance.sh    # Boot Volume 自動備份 + 輪替
-│   ├── restore-instance.sh   # 從備份還原實例
-│   ├── setup-cron.sh         # 一鍵部署監控到遠端
-│   ├── list-arm-images.sh    # 查詢可用 ARM 映像檔
-│   └── manage-instances.sh   # 互動式實例管理（查看/終止）
-└── logs/                # 日誌（不會進 git）
+│   ├── install-tools.sh  # Tool installation (Mac/Linux)
+│   ├── install-tools.ps1 # Tool installation (Windows PowerShell)
+│   ├── grab-free-a1.sh   # Grab ARM A1 (Mac/Linux)
+│   ├── grab-free-a1.ps1  # Grab ARM A1 (Windows)
+│   ├── check-cost.sh     # Cost notification (Mac/Linux)
+│   ├── check-cost.ps1    # Cost notification (Windows)
+│   ├── cost-guard.sh     # Cost guard (Mac/Linux)
+│   ├── cost-guard.ps1    # Cost guard (Windows)
+│   ├── oci-report.sh     # Resource report (Mac/Linux)
+│   ├── oci-report.ps1        # Resource report (Windows)
+│   ├── notify.sh             # Shared notification function (Bash)
+│   ├── notify.ps1            # Shared notification function (PowerShell)
+│   ├── ssh-login-notify.sh   # SSH login notification (PAM)
+│   ├── backup-instance.sh    # Boot Volume auto backup + rotation
+│   ├── restore-instance.sh   # Restore instance from backup
+│   ├── setup-cron.sh         # One-click deploy monitoring to remote
+│   ├── list-arm-images.sh    # Query available ARM images
+│   └── manage-instances.sh   # Interactive instance management (view/terminate)
+└── logs/                # Logs (not committed to git)
 ```
 
-## 常見問題
+## FAQ
 
-### Q: 搶資源一直出現 Out of host capacity？
+### Q: Keep getting "Out of host capacity" when grabbing resources?
 
-ARM A1 免費資源非常搶手，特別是亞太區域。建議：
-- 選擇較冷門的 region（如 `us-phoenix-1`、`ap-melbourne-1`）
-- 在離峰時段執行（凌晨 2-6 點）
-- 保持腳本持續運行，通常數小時到數天內可搶到
+ARM A1 free resources are highly competitive, especially in Asia-Pacific regions. Recommendations:
+- Choose less popular regions (e.g., `us-phoenix-1`, `ap-melbourne-1`)
+- Run during off-peak hours (2-6 AM local time)
+- Keep script running continuously; usually succeeds within hours to days
 
-### Q: 搶到第二台 A1 會超額嗎？
+### Q: Will grabbing a second A1 exceed limits?
 
-會！ARM A1 免費額度是 **4 OCPU / 24 GB 合計**，不是每台。如果你已經有一台 4/24 的 A1，再搶一台就會收費。請先確認現有資源：
+Yes! ARM A1 free limit is **4 OCPU / 24 GB total**, not per instance. If you already have one 4/24 A1, grabbing another will incur charges. Check existing resources first:
 
 ```bash
 ./scripts/oci-report.sh instances
 ```
 
-### Q: 花費守衛停機後怎麼恢復？
+### Q: How to recover after cost guard shuts down instances?
 
-1. 先到 OCI Console 確認是什麼產生了費用
-2. 移除超額資源
-3. 手動啟動需要的實例：
+1. First check OCI Console to identify what incurred charges
+2. Remove excess resources
+3. Manually start needed instances:
 ```bash
 oci compute instance action --instance-id <INSTANCE_OCID> --action START
 ```
 
-### Q: 可以在本機 Mac 跑監控嗎？
+### Q: Can I run monitoring locally on Mac?
 
-可以，但**不建議**。Mac 不一定 24 小時開機，可能漏掉檢查。建議部署到 OCI 實例上（用 `setup-cron.sh`），讓它 7×24 監控。
+Yes, but **not recommended**. Mac may not be on 24/7, potentially missing checks. Recommended to deploy to OCI instance (using `setup-cron.sh`) for 7×24 monitoring.
 
 ## License
 
