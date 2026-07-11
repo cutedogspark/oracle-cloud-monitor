@@ -1,24 +1,24 @@
 #!/bin/bash
-# OCI Boot Volume 自動備份 — 建立 Boot Volume Backup 並輪替舊備份
-# Always Free 提供 5 個免費備份額度，保留最新 5 個
+# OCI Boot Volume Auto Backup — Creates Boot Volume Backup and rotates old backups
+# Always Free provides 5 free backup slots, keeps the latest 5
 #
-# 用法:
-#   ./scripts/backup-instance.sh              # 互動模式：選擇實例、確認備份
-#   ./scripts/backup-instance.sh --auto       # 自動模式：備份第一台運行中的實例（cron 用）
-#   ./scripts/backup-instance.sh <instance-id> # 直接指定實例備份（不需確認）
+# Usage:
+#   ./scripts/backup-instance.sh              # Interactive mode: select instance, confirm backup
+#   ./scripts/backup-instance.sh --auto       # Auto mode: backup first running instance (for cron)
+#   ./scripts/backup-instance.sh <instance-id> # Directly specify instance for backup (no confirmation)
 #
-# 建議 cron: 每 3 小時
+# Suggested cron: every 3 hours
 #   0 */3 * * * ~/oci-monitor/scripts/backup-instance.sh --auto
 
 export SUPPRESS_LABEL_WARNING=True
 
-# 跨平台 Python 偵測
+# Cross-platform Python detection
 if command -v python3 >/dev/null 2>&1; then
     PYTHON=python3
 elif command -v python >/dev/null 2>&1 && python --version 2>&1 | grep -q "Python 3"; then
     PYTHON=python
 else
-    echo "❌ 找不到 Python 3"
+    echo "❌ Python 3 not found"
     exit 1
 fi
 
@@ -27,7 +27,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${PROJECT_DIR}/.env"
 
 if [ ! -f "$ENV_FILE" ]; then
-    echo "❌ 找不到 .env"
+    echo "❌ .env not found"
     exit 1
 fi
 source "$ENV_FILE"
@@ -36,7 +36,7 @@ source "${SCRIPT_DIR}/notify.sh"
 LOG_FILE="${PROJECT_DIR}/logs/backup-instance.log"
 mkdir -p "$(dirname "$LOG_FILE")"
 
-# Always Free 上限 5 個備份
+# Always Free limit: 5 backups
 BACKUP_KEEP=${BACKUP_KEEP:-5}
 BACKUP_FREE_LIMIT=5
 BACKUP_TYPE=${BACKUP_TYPE:-INCREMENTAL}
@@ -47,7 +47,7 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-# === 解析參數 ===
+# === Parse arguments ===
 AUTO_MODE=false
 INSTANCE_ID=""
 
@@ -63,18 +63,18 @@ case "${1:-}" in
         AUTO_MODE=false
         ;;
     *)
-        echo "用法:"
-        echo "  $0              # 互動模式"
-        echo "  $0 --auto       # 自動模式（cron 用）"
-        echo "  $0 <instance-id> # 指定實例"
+        echo "Usage:"
+        echo "  $0              # Interactive mode"
+        echo "  $0 --auto       # Auto mode (for cron)"
+        echo "  $0 <instance-id> # Specify instance"
         exit 1
         ;;
 esac
 
-# === 檢查是否有備份正在進行中 ===
-# 查詢所有狀態為 CREATING 的備份（包含其他機器或排程觸發的）
+# === Check if any backup is in progress ===
+# Query all backups with CREATING state (including those from other machines or scheduled tasks)
 check_backup_in_progress() {
-    log "檢查是否有備份正在進行中..."
+    log "Checking if any backup is in progress..."
 
     local creating_json
     creating_json=$(oci bv boot-volume-backup list \
@@ -97,25 +97,25 @@ for b in data:
     print(f'  • {name} (started: {created})')
 " 2>/dev/null)
 
-        log "有 $creating_count 個備份正在進行中，跳過本次備份:"
+        log "$creating_count backups in progress, skipping this backup:"
         log "$detail"
 
         if [ "$AUTO_MODE" = false ]; then
             echo ""
-            echo "  ⚠️  有 $creating_count 個備份正在進行中："
+            echo "  ⚠️  $creating_count backups in progress:"
             echo "$detail"
             echo ""
-            echo "  請等待完成後再執行備份。"
+            echo "  Please wait for completion before running backup."
         fi
         exit 0
     fi
 
-    log "沒有進行中的備份，繼續"
+    log "No backups in progress, continuing"
 }
 
-# === 檢查備份數量並在達上限時刪除最舊的 ===
+# === Check backup count and delete oldest if at limit ===
 check_and_free_backup_slot() {
-    log "檢查備份數量（免費上限: $BACKUP_FREE_LIMIT 個）..."
+    log "Checking backup count (free limit: $BACKUP_FREE_LIMIT)..."
 
     local available_json
     available_json=$(oci bv boot-volume-backup list \
@@ -129,24 +129,24 @@ check_and_free_backup_slot() {
     local available_count
     available_count=$(echo "$available_json" | $PYTHON -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null)
 
-    log "目前備份數量: $available_count / $BACKUP_FREE_LIMIT"
+    log "Current backup count: $available_count / $BACKUP_FREE_LIMIT"
 
     if [ "$available_count" -ge "$BACKUP_FREE_LIMIT" ] 2>/dev/null; then
-        # 取得最舊的備份
+        # Get oldest backup
         local oldest_id oldest_name
         oldest_id=$(echo "$available_json" | $PYTHON -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])" 2>/dev/null)
         oldest_name=$(echo "$available_json" | $PYTHON -c "import sys,json; print(json.load(sys.stdin)['data'][0]['display-name'])" 2>/dev/null)
 
-        log "已達免費上限，刪除最舊的備份: $oldest_name"
+        log "Free limit reached, deleting oldest backup: $oldest_name"
 
         if [ "$AUTO_MODE" = false ]; then
             echo ""
-            echo "  ⚠️  備份數量已達免費上限 ($available_count/$BACKUP_FREE_LIMIT)"
-            echo "  將刪除最舊的備份: $oldest_name"
+            echo "  ⚠️  Backup count reached free limit ($available_count/$BACKUP_FREE_LIMIT)"
+            echo "  Will delete oldest backup: $oldest_name"
             echo ""
-            read -rp "  確認刪除？(Y/n): " del_confirm
+            read -rp "  Confirm deletion? (Y/n): " del_confirm
             case "$del_confirm" in
-                [nN]) echo "  已取消。"; exit 0 ;;
+                [nN]) echo "  Cancelled."; exit 0 ;;
             esac
         fi
 
@@ -155,18 +155,18 @@ check_and_free_backup_slot() {
             --force 2>/dev/null
 
         if [ $? -eq 0 ]; then
-            log "已刪除: $oldest_name"
-            # 等待刪除生效
+            log "Deleted: $oldest_name"
+            # Wait for deletion to take effect
             sleep 5
         else
-            log "ERROR: 刪除最舊備份失敗: $oldest_name"
+            log "ERROR: Failed to delete oldest backup: $oldest_name"
             send_notify "OCI Backup Failed" "Cannot delete oldest backup to free slot: $oldest_name" "high"
             exit 1
         fi
     fi
 }
 
-# === 取得實例列表 ===
+# === Get instance list ===
 get_instances_json() {
     oci compute instance list \
         --compartment-id "$COMPARTMENT" \
@@ -175,11 +175,11 @@ get_instances_json() {
         --output json 2>/dev/null
 }
 
-# === 互動模式：選擇實例 ===
+# === Interactive mode: select instance ===
 interactive_select() {
     echo ""
     echo "══════════════════════════════════════════"
-    echo "  OCI Boot Volume 備份工具"
+    echo "  OCI Boot Volume Backup Tool"
     echo "══════════════════════════════════════════"
     echo ""
 
@@ -190,16 +190,16 @@ interactive_select() {
     count=$(echo "$instances_json" | $PYTHON -c "import sys,json; print(len(json.load(sys.stdin).get('data',[])))" 2>/dev/null)
 
     if [ "$count" = "0" ] || [ -z "$count" ]; then
-        echo "  沒有運行中的實例。"
+        echo "  No running instances."
         exit 0
     fi
 
-    # 列出實例
+    # List instances
     echo "$instances_json" | $PYTHON -c "
 import sys, json
 
 data = json.load(sys.stdin).get('data', [])
-print(f'  運行中的實例（共 {len(data)} 台）：')
+print(f'  Running instances (total: {len(data)}):')
 print()
 for i, inst in enumerate(data, 1):
     name = inst.get('display-name', 'N/A')
@@ -215,14 +215,14 @@ for i, inst in enumerate(data, 1):
     print()
 " 2>/dev/null
 
-    # 選擇實例
+    # Select instance
     if [ "$count" = "1" ]; then
         INSTANCE_ID=$(echo "$instances_json" | $PYTHON -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])" 2>/dev/null)
         local name
         name=$(echo "$instances_json" | $PYTHON -c "import sys,json; print(json.load(sys.stdin)['data'][0]['display-name'])" 2>/dev/null)
-        echo "  只有一台實例，自動選擇: $name"
+        echo "  Only one instance, auto-selecting: $name"
     else
-        read -rp "  請選擇要備份的實例 [1-${count}]: " selection
+        read -rp "  Select instance to backup [1-${count}]: " selection
         INSTANCE_ID=$(echo "$instances_json" | $PYTHON -c "
 import sys, json
 data = json.load(sys.stdin).get('data', [])
@@ -233,14 +233,14 @@ else:
     print('INVALID')
 " 2>/dev/null)
         if [ "$INSTANCE_ID" = "INVALID" ] || [ -z "$INSTANCE_ID" ]; then
-            echo "  ❌ 無效的選擇"
+            echo "  ❌ Invalid selection"
             exit 1
         fi
     fi
 
-    # 查詢現有備份
+    # Query existing backups
     echo ""
-    echo "  ── 現有備份 ──"
+    echo "  ── Existing Backups ──"
     local existing
     existing=$(oci bv boot-volume-backup list \
         --compartment-id "$COMPARTMENT" \
@@ -255,7 +255,7 @@ import sys, json
 
 data = json.load(sys.stdin).get('data', [])
 if not data:
-    print('  （目前沒有備份）')
+    print('  (No backups currently)')
 else:
     for b in data:
         name = b.get('display-name', 'N/A')
@@ -263,22 +263,22 @@ else:
         btype = b.get('type', 'N/A')
         created = b.get('time-created', 'N/A')[:19].replace('T', ' ')
         print(f'  • {name} ({size} GB, {btype}, {created})')
-    print(f'  共 {len(data)}/{$BACKUP_FREE_LIMIT} 個（Always Free 上限 $BACKUP_FREE_LIMIT 個）')
+    print(f'  Total: {len(data)}/{$BACKUP_FREE_LIMIT} (Always Free limit: $BACKUP_FREE_LIMIT)')
 " 2>/dev/null
 
-    # 選擇備份類型
+    # Select backup type
     echo ""
-    echo "  備份類型："
-    echo "    [1] INCREMENTAL — 增量備份（較快、較小）"
-    echo "    [2] FULL        — 完整備份（較慢、較大，還原更可靠）"
+    echo "  Backup Type:"
+    echo "    [1] INCREMENTAL — Incremental backup (faster, smaller)"
+    echo "    [2] FULL        — Full backup (slower, larger, more reliable restore)"
     echo ""
-    read -rp "  請選擇備份類型 [1/2]（預設 1）: " type_choice
+    read -rp "  Select backup type [1/2] (default 1): " type_choice
     case "$type_choice" in
         2) BACKUP_TYPE="FULL" ;;
         *) BACKUP_TYPE="INCREMENTAL" ;;
     esac
 
-    # 確認
+    # Confirmation
     local inst_name
     inst_name=$(oci compute instance get \
         --instance-id "$INSTANCE_ID" \
@@ -286,18 +286,18 @@ else:
         --raw-output 2>/dev/null)
 
     echo ""
-    echo "  ── 確認 ──"
-    echo "  實例:     $inst_name"
-    echo "  備份類型: $BACKUP_TYPE"
-    echo "  保留數量: $BACKUP_KEEP（免費上限 $BACKUP_FREE_LIMIT 個）"
+    echo "  ── Confirmation ──"
+    echo "  Instance:   $inst_name"
+    echo "  Backup Type: $BACKUP_TYPE"
+    echo "  Retention:   $BACKUP_KEEP (free limit: $BACKUP_FREE_LIMIT)"
     echo ""
-    read -rp "  開始備份？(Y/n): " confirm
+    read -rp "  Start backup? (Y/n): " confirm
     case "$confirm" in
-        [nN]) echo "  已取消。"; exit 0 ;;
+        [nN]) echo "  Cancelled."; exit 0 ;;
     esac
 }
 
-# === 自動模式：取得第一台實例 ===
+# === Auto mode: get first instance ===
 auto_select() {
     if [ -z "$INSTANCE_ID" ]; then
         INSTANCE_ID=$(oci compute instance list \
@@ -308,23 +308,23 @@ auto_select() {
             --raw-output 2>/dev/null)
 
         if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "null" ]; then
-            log "ERROR: 找不到運行中的實例"
+            log "ERROR: No running instances found"
             send_notify "OCI Backup Failed" "No running instance found" "high"
             exit 1
         fi
     fi
 }
 
-# === 執行備份 ===
+# === Execute backup ===
 do_backup() {
     INSTANCE_NAME=$(oci compute instance get \
         --instance-id "$INSTANCE_ID" \
         --query 'data."display-name"' \
         --raw-output 2>/dev/null)
 
-    log "開始備份: $INSTANCE_NAME ($INSTANCE_ID)"
+    log "Starting backup: $INSTANCE_NAME ($INSTANCE_ID)"
 
-    # 取得 Boot Volume ID
+    # Get Boot Volume ID
     BOOT_VOLUME_ID=$(oci compute boot-volume-attachment list \
         --compartment-id "$COMPARTMENT" \
         --availability-domain "$AVAILABILITY_DOMAIN" \
@@ -333,16 +333,16 @@ do_backup() {
         --raw-output 2>/dev/null)
 
     if [ -z "$BOOT_VOLUME_ID" ] || [ "$BOOT_VOLUME_ID" = "null" ]; then
-        log "ERROR: 找不到 Boot Volume"
+        log "ERROR: Boot Volume not found"
         send_notify "OCI Backup Failed" "Cannot find boot volume for $INSTANCE_NAME" "high"
         exit 1
     fi
 
     log "Boot Volume: $BOOT_VOLUME_ID"
 
-    # 建立備份
+    # Create backup
     BACKUP_NAME="${BACKUP_PREFIX}-${INSTANCE_NAME}-$(date '+%Y%m%d-%H%M')"
-    log "建立備份: $BACKUP_NAME (type: $BACKUP_TYPE)"
+    log "Creating backup: $BACKUP_NAME (type: $BACKUP_TYPE)"
 
     backup_result=$(oci bv boot-volume-backup create \
         --boot-volume-id "$BOOT_VOLUME_ID" \
@@ -351,17 +351,17 @@ do_backup() {
         --output json 2>&1)
 
     if [ $? -ne 0 ]; then
-        log "ERROR: 備份建立失敗: $backup_result"
+        log "ERROR: Backup creation failed: $backup_result"
         send_notify "OCI Backup Failed" "Failed to create backup for $INSTANCE_NAME
 Error: $backup_result" "urgent"
         exit 1
     fi
 
     BACKUP_ID=$(echo "$backup_result" | $PYTHON -c "import sys,json; print(json.load(sys.stdin)['data']['id'])" 2>/dev/null)
-    log "備份已建立: $BACKUP_ID"
+    log "Backup created: $BACKUP_ID"
 
-    # 等待備份完成（最多 30 分鐘）
-    log "等待備份完成..."
+    # Wait for backup completion (max 30 minutes)
+    log "Waiting for backup to complete..."
     local max_wait=1800
     local wait_interval=60
     local elapsed=0
@@ -374,11 +374,11 @@ Error: $backup_result" "urgent"
 
         case "$state" in
             AVAILABLE)
-                log "備份完成: $BACKUP_NAME"
+                log "Backup completed: $BACKUP_NAME"
                 break
                 ;;
             FAULTY|TERMINATED)
-                log "ERROR: 備份失敗，狀態: $state"
+                log "ERROR: Backup failed, state: $state"
                 send_notify "OCI Backup Failed" "Backup $BACKUP_NAME ended with state: $state" "urgent"
                 exit 1
                 ;;
@@ -397,19 +397,19 @@ Error: $backup_result" "urgent"
     fi
 
     if [ $elapsed -ge $max_wait ]; then
-        log "WARNING: 備份超時（仍在進行中: $BACKUP_ID）"
+        log "WARNING: Backup timeout (still in progress: $BACKUP_ID)"
     fi
 
-    # 備份大小
+    # Backup size
     BACKUP_SIZE=$(oci bv boot-volume-backup get \
         --boot-volume-backup-id "$BACKUP_ID" \
         --query 'data."size-in-gbs"' \
         --raw-output 2>/dev/null)
 }
 
-# === 發送通知與結果 ===
+# === Send notification and result ===
 send_result() {
-    # 查詢最終備份數量
+    # Query final backup count
     local final_count
     final_count=$(oci bv boot-volume-backup list \
         --compartment-id "$COMPARTMENT" \
@@ -430,18 +430,18 @@ Time: $(date '+%Y-%m-%d %H:%M')"
     if [ "$AUTO_MODE" = false ]; then
         echo ""
         echo "══════════════════════════════════════════"
-        echo "  ✅ 備份完成！"
+        echo "  ✅ Backup completed!"
         echo "══════════════════════════════════════════"
         echo ""
-        echo "  實例:     $INSTANCE_NAME"
-        echo "  備份名稱: $BACKUP_NAME"
-        echo "  備份大小: ${BACKUP_SIZE:-N/A} GB"
-        echo "  備份類型: $BACKUP_TYPE"
-        echo "  目前備份: ${final_count:-N/A} / $BACKUP_FREE_LIMIT"
+        echo "  Instance:    $INSTANCE_NAME"
+        echo "  Backup Name: $BACKUP_NAME"
+        echo "  Backup Size: ${BACKUP_SIZE:-N/A} GB"
+        echo "  Backup Type: $BACKUP_TYPE"
+        echo "  Current Backups: ${final_count:-N/A} / $BACKUP_FREE_LIMIT"
         echo ""
     fi
 
-    log "備份流程完成"
+    log "Backup process completed"
 }
 
 # === Main ===
@@ -451,12 +451,12 @@ else
     interactive_select
 fi
 
-# 備份前檢查：是否有正在進行中的備份
+# Pre-backup check: any backup in progress
 check_backup_in_progress
 
-# 備份前檢查：是否已達免費上限，達到則先刪最舊的
+# Pre-backup check: if at free limit, delete oldest first
 check_and_free_backup_slot
 
-# 執行備份
+# Execute backup
 do_backup
 send_result

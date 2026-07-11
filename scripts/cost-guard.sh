@@ -1,18 +1,18 @@
 #!/bin/bash
-# OCI 花費守衛 — 超過上限自動停止所有實例
-# 建議由 cron 每小時執行
+# OCI Cost Guard — Automatically stop all instances when limit exceeded
+# Recommended to be executed hourly by cron
 #
-# 用法: ./scripts/cost-guard.sh
+# Usage: ./scripts/cost-guard.sh
 
 export SUPPRESS_LABEL_WARNING=True
 
-# 跨平台 Python 偵測
+# Cross-platform Python detection
 if command -v python3 >/dev/null 2>&1; then
     PYTHON=python3
 elif command -v python >/dev/null 2>&1 && python --version 2>&1 | grep -q "Python 3"; then
     PYTHON=python
 else
-    echo "❌ 找不到 Python 3，請先安裝: ./scripts/install-tools.sh"
+    echo "❌ Python 3 not found, please install first: ./scripts/install-tools.sh"
     exit 1
 fi
 
@@ -21,7 +21,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${PROJECT_DIR}/.env"
 
 if [ ! -f "$ENV_FILE" ]; then
-    echo "❌ 找不到 .env"
+    echo "❌ .env file not found"
     exit 1
 fi
 source "$ENV_FILE"
