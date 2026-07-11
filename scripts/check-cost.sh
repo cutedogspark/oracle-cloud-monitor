@@ -1,18 +1,18 @@
 #!/bin/bash
-# OCI 花費通知 — 查詢當月花費並發送通知
-# 建議由 cron 定期執行（例如每天 3 次）
+# OCI Cost Notification — Query monthly cost and send notification
+# Recommended to be executed periodically by cron (e.g., 3 times daily)
 #
-# 用法: ./scripts/check-cost.sh
+# Usage: ./scripts/check-cost.sh
 
 export SUPPRESS_LABEL_WARNING=True
 
-# 跨平台 Python 偵測
+# Cross-platform Python detection
 if command -v python3 >/dev/null 2>&1; then
     PYTHON=python3
 elif command -v python >/dev/null 2>&1 && python --version 2>&1 | grep -q "Python 3"; then
     PYTHON=python
 else
-    echo "❌ 找不到 Python 3，請先安裝: ./scripts/install-tools.sh"
+    echo "❌ Python 3 not found, please install first: ./scripts/install-tools.sh"
     exit 1
 fi
 
@@ -21,7 +21,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${PROJECT_DIR}/.env"
 
 if [ ! -f "$ENV_FILE" ]; then
-    echo "❌ 找不到 .env"
+    echo "❌ .env file not found"
     exit 1
 fi
 source "$ENV_FILE"
@@ -34,7 +34,7 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-# === 查詢本月花費 ===
+# === Query Monthly Cost ===
 START=$(date -u +"%Y-%m-01T00:00:00Z")
 END=$(date -u -v+1m +"%Y-%m-01T00:00:00Z" 2>/dev/null || date -u -d "+1 month" +"%Y-%m-01T00:00:00Z")
 
@@ -51,7 +51,7 @@ if [ -z "$cost_json" ]; then
     exit 1
 fi
 
-# 解析花費明細
+# Parse cost details
 cost_detail=$(echo "$cost_json" | $PYTHON -c "
 import sys, json
 
@@ -75,7 +75,7 @@ for svc, amt in sorted(services.items(), key=lambda x: -x[1]):
 total=$(echo "$cost_detail" | head -1 | cut -d: -f2)
 detail=$(echo "$cost_detail" | tail -n+2)
 
-# === 查詢運行中的實例 ===
+# === Query Running Instances ===
 instances=$(oci compute instance list \
     --compartment-id "${COMPARTMENT_ID:-$TENANCY_ID}" \
     --lifecycle-state RUNNING \
@@ -90,7 +90,7 @@ except:
     print('  (query failed)')
 " 2>/dev/null)
 
-# === 組合訊息 ===
+# === Compose Message ===
 month=$(date +"%Y-%m")
 now=$(date '+%Y-%m-%d %H:%M')
 
@@ -118,7 +118,7 @@ fi
 
 log "$message"
 
-# === 發送通知 ===
+# === Send Notification ===
 send_notify "$title" "$message" "$priority"
 
 log "Done"
