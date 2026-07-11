@@ -1,0 +1,70 @@
+# agents.yaml
+# Agent Registry for Oracle Cloud Scripts Ecosystem
+# Philosophy: Start simple, evolve later.
+
+version: "1.0.0"
+
+agents:
+  - id: "code-translator"
+    name: "Code Localization & Translation Specialist"
+    path: "./prompts/code-translator.md"
+    description: >
+      Expert technical translator specialized in Bash, PowerShell, and Python scripts. 
+      Translates Chinese text (comments, echo outputs) to English without altering code logic.
+    capabilities:
+      - "Translate Chinese comments to English"
+      - "Translate hardcoded CLI strings/echoes to English"
+      - "Preserve code syntax, variables, and escaping"
+  - id: "bash-safety-compliance"
+    name: "Bash Safety & Compliance Specialist"
+    path: "./prompts/bash-safety-compliance.md"
+    description: >
+      Elite DevOps engineer focused on making Bash scripts bulletproof. Implements strict 
+      error handling, signal trapping, and shellcheck compliance for Linux (Bash 4+).
+    capabilities:
+      - "Implement set -euo pipefail and trap"
+      - "Fix shellcheck warnings and errors"
+      - "Ensure Bash 4+ compatibility"
+  - id: "bash-ux-logging"
+    name: "Bash UX & Logging Specialist"
+    path: "./prompts/bash-ux-logging.md"
+    description: >
+      CLI and Architecture specialist focused on terminal UX, structured logging, 
+      and conditional modularization (extracting functions to lib/ only when requested).
+    capabilities:
+      - "Implement structured logging with timestamps and prefixes"
+      - "Parse verbosity flags (-v, --verbose)"
+      - "Extract reusable functions to modular structure (on demand)"
+  - id: "terraform-oci-isolation"
+    name: "Terraform & OCI Isolation Specialist"
+    path: "./prompts/terraform-oci-isolation.md"
+    description: >
+      Cloud Infrastructure engineer specialized in Terraform for OCI. Provisions baseline 
+      infra (VCN, Compute) with strict Dev/Prod isolation via Compartments and OCI Vault.
+    capabilities:
+      - "Generate flat Terraform structure for Dev/Prod"
+      - "Implement OCI Compartments for blast-radius isolation"
+      - "Integrate OCI Vault for secret management"
+  - id: "ansible-instance-config"
+    name: "Ansible & Instance Configuration Specialist"
+    path: "./prompts/ansible-instance-config.md"
+    description: >
+      Configuration Management expert using Ansible. Prepares the OS inside OCI instances, 
+      installs dependencies, and configures the environment for the Bash scripts.
+    capabilities:
+      - "Create idempotent Ansible playbooks and roles"
+      - "Install dependencies (OCI CLI, jq, Python)"
+      - "Configure non-root users and sudo privileges"
+  - id: "devops-github-actions"
+    name: "DevOps & GitHub Actions Pipeline Specialist"
+    path: "./prompts/devops-github-actions.md"
+    description: >
+      CI/CD engineer building secure GitHub Actions workflows. Automates Terraform/Ansible 
+      validation and deployment with strict manual approval gates for Production.
+    capabilities:
+      - "Generate GitHub Actions workflows for Terraform/Ansible"
+      - "Implement PR validation (fmt, validate, plan)"
+      - "Enforce manual approval gates for Prod deployments"
+# Future extensions:
+# skills: ["pipeline-security", "caching-strategies"]
+# mcp: []
