@@ -1,20 +1,20 @@
 #!/bin/bash
-# Oracle Cloud Free Tier — 搶 ARM A1.Flex 資源
-# 自動重試建立實例，直到搶到為止
+# Oracle Cloud Free Tier — Grab ARM A1.Flex resources
+# Automatically retry creating instances until successful
 #
-# 用法: ./scripts/grab-free-a1.sh
-# 需先複製 env.example → .env 並填入你的設定
+# Usage: ./scripts/grab-free-a1.sh
+# Copy env.example to .env and fill in your settings first
 
 set -euo pipefail
 export SUPPRESS_LABEL_WARNING=True
 
-# 跨平台 Python 偵測（某些環境只有 python 沒有 python3）
+# Cross-platform Python detection (some environments have only python, not python3)
 if command -v python3 >/dev/null 2>&1; then
     PYTHON=python3
 elif command -v python >/dev/null 2>&1 && python --version 2>&1 | grep -q "Python 3"; then
     PYTHON=python
 else
-    echo "❌ 找不到 Python 3，請先安裝: ./scripts/install-tools.sh"
+    echo "❌ Python 3 not found, please install first: ./scripts/install-tools.sh"
     exit 1
 fi
 
@@ -23,23 +23,23 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${PROJECT_DIR}/.env"
 
 if [ ! -f "$ENV_FILE" ]; then
-    echo "❌ 找不到 .env，請先複製 env.example 並填入設定："
+    echo "❌ .env file not found. Please copy env.example and fill in settings:"
     echo "   cp env.example .env"
     exit 1
 fi
 source "$ENV_FILE"
 source "${SCRIPT_DIR}/notify.sh"
 
-# 驗證必要變數
+# Validate required variables
 for var in COMPARTMENT_ID AVAILABILITY_DOMAIN SUBNET_ID IMAGE_ID SSH_KEY_FILE DISPLAY_NAME OCPUS MEMORY BOOT_SIZE; do
     if [ -z "${!var:-}" ]; then
-        echo "❌ .env 缺少設定: $var"
+        echo "❌ .env missing setting: $var"
         exit 1
     fi
 done
 
-# === 檢查帳戶類型 (Pay As You Go) ===
-echo "▸ 檢查帳戶類型..."
+# === Check Account Type (Pay As You Go) ===
+echo "▸ Checking account type..."
 PAYMENT_MODEL=$(oci organizations subscription list \
     --compartment-id "$TENANCY_ID" \
     --output json 2>/dev/null | $PYTHON -c "
@@ -58,30 +58,30 @@ except:
 if [ "$PAYMENT_MODEL" != "PAYG" ]; then
     echo ""
     echo "══════════════════════════════════════════════════"
-    echo "  ⚠️  帳戶類型: ${PAYMENT_MODEL:-UNKNOWN} (非 Pay As You Go)"
+    echo "  ⚠️  Account Type: ${PAYMENT_MODEL:-UNKNOWN} (Not Pay As You Go)"
     echo "══════════════════════════════════════════════════"
     echo ""
-    echo "  你的帳戶目前不是 Pay As You Go (PAYG)。"
+    echo "  Your account is currently not Pay As You Go (PAYG)."
     echo ""
-    echo "  ┌─ Free Trial（免費試用）──────────────────────┐"
-    echo "  │ • 30 天試用期，含 \$300 USD 免費額度           │"
-    echo "  │ • 試用期結束後，非 Always Free 資源會被刪除   │"
-    echo "  │ • ARM A1 實例可能在試用結束後被回收           │"
-    echo "  └──────────────────────────────────────────────┘"
+    echo "  ┌─ Free Trial ─────────────────────────────────────┐"
+    echo "  │ • 30-day trial period with \$300 USD credit          │"
+    echo "  │ • After trial ends, non-Always Free resources will be deleted   │"
+    echo "  │ • ARM A1 instances may be reclaimed after trial ends           │"
+    echo "  └──────────────────────────────────────────────────┘"
     echo ""
-    echo "  ┌─ Pay As You Go（隨用隨付）──────────────────┐"
-    echo "  │ • Always Free 資源永久免費                   │"
-    echo "  │ • ARM A1 (4 OCPU / 24GB) 不會被回收          │"
-    echo "  │ • 超出免費額度才會收費                        │"
-    echo "  │ • 需綁定信用卡，但不會主動扣款                │"
-    echo "  └──────────────────────────────────────────────┘"
+    echo "  ┌─ Pay As You Go ────────────────────────────────────┐"
+    echo "  │ • Always Free resources are permanently free                   │"
+    echo "  │ • ARM A1 (4 OCPU / 24GB) will not be reclaimed          │"
+    echo "  │ • Charges apply only when exceeding free tier limits                        │"
+    echo "  │ • Credit card required, but no automatic charges                │"
+    echo "  └──────────────────────────────────────────────────┘"
     echo ""
-    echo "  建議：升級為 PAYG 以確保搶到的實例不會被回收。"
-    echo "  升級方式：OCI Console → Billing → Upgrade to Paid"
+    echo "  Recommendation: Upgrade to PAYG to ensure grabbed instances will not be reclaimed."
+    echo "  Upgrade method: OCI Console → Billing → Upgrade to Paid"
     echo ""
-    read -rp "  是否仍要繼續搶資源？(y/N) " answer
+    read -rp "  Continue grabbing resources anyway? (y/N) " answer
     if [[ ! "${answer,,}" =~ ^y ]]; then
-        echo "  已取消。"
+        echo "  Cancelled."
         exit 0
     fi
     echo ""
@@ -94,8 +94,8 @@ RETRY_INTERVAL=30
 LOG_FILE="${PROJECT_DIR}/logs/grab-free-a1.log"
 mkdir -p "$(dirname "$LOG_FILE")"
 
-# === 準備 Reserved Public IP ===
-echo "▸ 檢查 Reserved Public IP..."
+# === Prepare Reserved Public IP ===
+echo "▸ Checking Reserved Public IP..."
 RESERVED_IP_JSON=$(oci network public-ip list \
     --compartment-id "$COMPARTMENT_ID" \
     --scope REGION --lifetime RESERVED --all \
@@ -122,9 +122,9 @@ import sys,json
 try: print(json.load(sys.stdin)['data']['ip-address'])
 except: print('')
 " 2>/dev/null)
-    echo "  ✅ 找到現有 Reserved IP: $RESERVED_IP_ADDR"
+    echo "  ✅ Found existing Reserved IP: $RESERVED_IP_ADDR"
 else
-    echo "  沒有現有的 Reserved IP，正在建立..."
+    echo "  No existing Reserved IP, creating..."
     RESERVED_RESULT=$(oci network public-ip create \
         --compartment-id "$COMPARTMENT_ID" \
         --lifetime RESERVED \
@@ -141,14 +141,14 @@ try: print(json.load(sys.stdin)['data']['ip-address'])
 except: print('')
 " 2>/dev/null)
     if [ -z "$RESERVED_IP_ID" ]; then
-        echo "  ❌ 建立 Reserved IP 失敗"
+        echo "  ❌ Failed to create Reserved IP"
         echo "  $RESERVED_RESULT"
         exit 1
     fi
-    echo "  ✅ 已建立 Reserved IP: $RESERVED_IP_ADDR"
+    echo "  ✅ Created Reserved IP: $RESERVED_IP_ADDR"
 fi
 
-# shape-config 用 file:// 傳遞，避免 JSON 引號問題
+# shape-config passed via file:// to avoid JSON quote issues
 SHAPE_CONFIG_FILE=$(mktemp)
 echo "{\"ocpus\": $OCPUS, \"memoryInGBs\": $MEMORY}" > "$SHAPE_CONFIG_FILE"
 trap "rm -f $SHAPE_CONFIG_FILE" EXIT
@@ -171,16 +171,16 @@ if m:
 }
 
 log "=========================================="
-log "開始搶 ARM A1.Flex ($OCPUS OCPU / ${MEMORY}GB RAM)"
-log "名稱: $DISPLAY_NAME"
+log "Starting to grab ARM A1.Flex ($OCPUS OCPU / ${MEMORY}GB RAM)"
+log "Name: $DISPLAY_NAME"
 log "Region: $REGION"
-log "每 ${RETRY_INTERVAL} 秒重試一次"
+log "Retry every ${RETRY_INTERVAL} seconds"
 log "=========================================="
 
 attempt=0
 while true; do
     attempt=$((attempt + 1))
-    log "--- 第 $attempt 次嘗試 ---"
+    log "--- Attempt $attempt ---"
 
     result=$(oci compute instance launch \
         --compartment-id "$COMPARTMENT_ID" \
@@ -195,36 +195,36 @@ while true; do
         --ssh-authorized-keys-file "$SSH_KEY_FILE" \
         --output json 2>&1) || true
 
-    # 成功：回應中含有 lifecycle-state
+    # Success: Response contains lifecycle-state
     if echo "$result" | grep -q '"lifecycle-state"'; then
-        log "✅ $DISPLAY_NAME 建立成功！"
+        log "✅ $DISPLAY_NAME created successfully!"
 
         INSTANCE_ID=$(echo "$result" | $PYTHON -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',d)['id'])")
-        log "實例 OCID: $INSTANCE_ID"
+        log "Instance OCID: $INSTANCE_ID"
 
-        # === 綁定 Reserved Public IP ===
-        log "▸ 等待實例進入 RUNNING 狀態..."
+        # === Bind Reserved Public IP ===
+        log "▸ Waiting for instance to enter RUNNING state..."
         for w in $(seq 1 30); do
             STATE=$(oci compute instance get --instance-id "$INSTANCE_ID" \
                 --query 'data."lifecycle-state"' --raw-output 2>/dev/null || echo "")
             [ "$STATE" = "RUNNING" ] && break
-            log "  狀態: ${STATE:-UNKNOWN}，等待 10 秒... ($w/30)"
+            log "  Status: ${STATE:-UNKNOWN}, waiting 10 seconds... ($w/30)"
             sleep 10
         done
 
-        log "▸ 取得 VNIC 資訊..."
+        log "▸ Getting VNIC information..."
         VNIC_ID=""
         for w in $(seq 1 10); do
             VNIC_ID=$(oci compute instance list-vnics \
                 --instance-id "$INSTANCE_ID" --output json 2>/dev/null \
                 | $PYTHON -c "import sys,json; d=json.load(sys.stdin).get('data',[]); print(d[0]['id'] if d else '')" 2>/dev/null)
             [ -n "$VNIC_ID" ] && break
-            log "  VNIC 尚未就緒，等待 5 秒... ($w/10)"
+            log "  VNIC not ready yet, waiting 5 seconds... ($w/10)"
             sleep 5
         done
 
         if [ -z "$VNIC_ID" ]; then
-            log "❌ 無法取得 VNIC，請手動綁定 Reserved IP"
+            log "❌ Unable to get VNIC, please manually bind Reserved IP"
             break
         fi
 
@@ -232,24 +232,24 @@ while true; do
             --vnic-id "$VNIC_ID" --output json 2>/dev/null \
             | $PYTHON -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])")
 
-        log "▸ 綁定 Reserved IP: $RESERVED_IP_ADDR"
+        log "▸ Binding Reserved IP: $RESERVED_IP_ADDR"
         oci network public-ip update \
             --public-ip-id "$RESERVED_IP_ID" \
             --private-ip-id "$PRIVATE_IP_ID" \
             --output json >/dev/null 2>&1
 
         PUBLIC_IP="$RESERVED_IP_ADDR"
-        log "固定公網 IP: $PUBLIC_IP"
+        log "Fixed Public IP: $PUBLIC_IP"
 
         send_notify \
-            "OCI A1 搶到了！" \
-            "$DISPLAY_NAME ($OCPUS OCPU / ${MEMORY}GB) 建立成功！IP: ${PUBLIC_IP} 第 ${attempt} 次嘗試" \
+            "OCI A1 grabbed successfully!" \
+            "$DISPLAY_NAME ($OCPUS OCPU / ${MEMORY}GB) created successfully!IP: ${PUBLIC_IP} Attempt ${attempt}" \
             "urgent"
-        log "📨 已發送通知"
+        log "📨 Notification sent"
         break
     fi
 
-    # 解析錯誤
+    # Parse error
     parsed=$(echo "$result" | parse_error)
     error_code=$(echo "$parsed" | cut -d'|' -f1)
     error_msg=$(echo "$parsed" | cut -d'|' -f2)
@@ -259,23 +259,23 @@ while true; do
     fi
 
     if echo "$error_msg" | grep -qi "capacity"; then
-        log "⚠️  [缺貨] $error_msg"
-        log "等待 ${RETRY_INTERVAL} 秒後重試..."
+        log "⚠️  [Out of capacity] $error_msg"
+        log "Waiting ${RETRY_INTERVAL} seconds before retry..."
         sleep "$RETRY_INTERVAL"
     elif [ "$error_code" = "TooManyRequests" ]; then
         wait_time=$((RETRY_INTERVAL * 2))
-        log "🚫 [限流] 請求太頻繁！等待 ${wait_time} 秒..."
+        log "🚫 [Rate limited] Requests too frequent! Waiting ${wait_time} seconds..."
         sleep "$wait_time"
     elif echo "$error_msg" | grep -qi "timed\|timeout\|connection"; then
-        log "⏳ [超時] 連線逾時，等待 ${RETRY_INTERVAL} 秒後重試..."
+        log "⏳ [Timeout] Connection timed out，Waiting ${RETRY_INTERVAL} seconds before retry..."
         sleep "$RETRY_INTERVAL"
     else
-        log "❌ 失敗: ${error_code:+$error_code: }$error_msg"
-        log "等待 ${RETRY_INTERVAL} 秒後重試..."
+        log "❌ Failed: ${error_code:+$error_code: }$error_msg"
+        log "Waiting ${RETRY_INTERVAL} seconds before retry..."
         sleep "$RETRY_INTERVAL"
     fi
 done
 
 log "=========================================="
-log "完成！"
+log "Complete!"
 log "=========================================="
